@@ -6,7 +6,7 @@
 [<img align="left" src=".github/Download.png"> Download](https://github.com/m35/jpsxdec/releases/download/v1.00/jpsxdec_v1-00_rev3921.zip) v1.00 cross-platform release, fully localized.<br/>
 See [what's new](jpsxdec/doc/CHANGES.txt).
 
-[<img align="left" src=".github/Download.png"> Or download](https://github.com/m35/jpsxdec/releases) the latest beta release (not fully localized). 
+[<img align="left" src=".github/Download-yellow.png"> Or download](https://github.com/m35/jpsxdec/releases) the latest beta release (not fully localized). 
 
 <br/>
 
