@@ -3,11 +3,14 @@
 **jPSXdec is a modern, cross-platform PlayStation 1 audio/video converter**  
 <sub>Also supports extracting files and TIM images.</sub>
 
-[<img align="left" src=".github/Download.png"> Download](https://github.com/m35/jpsxdec/releases/download/v1.00/jpsxdec_v1-00_rev3921.zip) the latest cross-platform version v1.00 (7 Sept 2019) 
-
+[<img align="left" src=".github/Download.png"> Download](https://github.com/m35/jpsxdec/releases/download/v1.00/jpsxdec_v1-00_rev3921.zip) v1.00 cross-platform release, fully localized.<br/>
 See [what's new](jpsxdec/doc/CHANGES.txt).
 
-| Found jPSXdec useful? Leave a tip. |
+[<img align="left" src=".github/Download.png"> Or download](https://github.com/m35/jpsxdec/releases) the latest beta release (not fully localized). 
+
+<br/>
+
+| Found jPSXdec useful? Leave a tip! |
 |:----------------------------------:|
 | [![paypal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=VRERX898F2H9C&item_name=jPSXdec+tips&currency_code=USD&source=url "") |
 
