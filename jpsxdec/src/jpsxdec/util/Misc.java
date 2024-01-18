@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -40,9 +40,8 @@ package jpsxdec.util;
 import java.io.File;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.io.UnsupportedEncodingException;
 import java.net.URI;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -58,30 +57,18 @@ import javax.annotation.Nonnull;
 /** Miscellaneous helper functions. */
 public final class Misc {
 
-    /**
-     * Every implementation of the Java platform is required to support US-ASCII.
-     * @see Charset
-     */
     public static @Nonnull byte[] stringToAscii(@Nonnull String string) {
-        try {
-            return string.getBytes("US-ASCII");
-        } catch (UnsupportedEncodingException ex) {
-            throw new RuntimeException(ex);
-        }
+        return string.getBytes(StandardCharsets.US_ASCII);
     }
 
     public static @Nonnull String asciiToString(@Nonnull byte[] ascii) {
         return asciiToString(ascii, 0, ascii.length);
     }
     public static @Nonnull String asciiToString(@Nonnull byte[] ascii, int iOffset, int iLength) {
-        try {
-            return new String(ascii, iOffset, iLength, "US-ASCII");
-        } catch (UnsupportedEncodingException ex) {
-            throw new RuntimeException(ex);
-        }
+        return new String(ascii, iOffset, iLength, StandardCharsets.US_ASCII);
     }
 
-    /** Makes a date X number of seconds past the year 0. */
+    /** Makes a date that is iSeconds past the year 0. */
     public static @Nonnull Date dateFromSeconds(int iSeconds) {
         Calendar c = Calendar.getInstance();
         c.set(0, 0, 0, 0, 0, iSeconds);
@@ -99,7 +86,7 @@ public final class Misc {
     public static @CheckForNull String[] regex(@Nonnull Pattern regex, @Nonnull String s) {
         Matcher m = regex.matcher(s);
         if (!m.find()) return null;
-        String as[] = new String[m.groupCount()+1];
+        String[] as = new String[m.groupCount()+1];
         for (int i = 0; i < as.length; i++) {
             as[i] = m.group(i);
         }
@@ -107,7 +94,7 @@ public final class Misc {
     }
 
     /** Returns an array of all matches of all groups.
-     * @return null if failed to match */
+     * @return empty array if failed to match */
     public static @Nonnull String[] regexAll(@Nonnull Pattern regex, @Nonnull String s) {
         Matcher m = regex.matcher(s);
         ArrayList<String> matches = new ArrayList<String>();
@@ -119,15 +106,6 @@ public final class Misc {
         return matches.toArray(new String[matches.size()]);
     }
 
-    /** Converts the String to int via {@link Integer#parseInt(java.lang.String)},
-     * unless it is null, then returns the default. */
-    public static int parseIntOrDefault(@CheckForNull String sInt, int iDefault) throws NumberFormatException {
-        if (sInt == null)
-            return iDefault;
-        else
-            return Integer.parseInt(sInt);
-    }
-
     /** http://www.rgagnon.com/javadetails/java-0029.html */
     public static @Nonnull String stack2string(@Nonnull Throwable e) {
         StringWriter sw = new StringWriter();
@@ -137,19 +115,11 @@ public final class Misc {
         return sw.toString();
     }
 
-    public static int intCompare(int i1, int i2) {
-        if (i1 < i2)
-            return -1;
-        else if (i1 > i2)
-            return 1;
-        else
-            return 0;
+    /** Null (and somewhat type) safe {@link Object#equals(Object). */
+    public static <T, U extends T> boolean objectEquals(@CheckForNull T o1, @CheckForNull U o2) {
+        return o1 == o2 || (o1 != null && o1.equals(o2));
     }
 
-    public static boolean objectEquals(@CheckForNull Object o1, @CheckForNull Object o2) {
-        return o1 == o2 || (o1 != null && o2 != null && o1.equals(o2));
-    }
-    
     /** Duplicates a string {@code count} times. */
     public static @Nonnull String dup(@Nonnull String s, int count) {
         if (count == 0)
@@ -169,7 +139,7 @@ public final class Misc {
         Arrays.fill(ac, c);
         return new String(ac);
     }
-    
+
     /** Removes the extension from the given file name/path. */
     public static @Nonnull String removeExt(@Nonnull String sFileName) {
         int i = sFileName.lastIndexOf('.');
@@ -178,7 +148,7 @@ public final class Misc {
         else
             return sFileName;
     }
-    
+
     /** Gets the extension from the given file name/path, without the '.'.
      * @return empty string if no extension.  */
     public static @Nonnull String getExt(@Nonnull String sFileName) {
@@ -194,7 +164,7 @@ public final class Misc {
         return CURRENT_URI.relativize(f.toURI()).toString();
     }
 
-    public static @Nonnull String join(@Nonnull Iterable ao, @Nonnull String sBetween) {
+    public static @Nonnull String join(@Nonnull Iterable<?> ao, @Nonnull String sBetween) {
         StringBuilder sb = new StringBuilder();
         boolean blnFirst = true;
         for (Object o : ao) {
@@ -204,7 +174,7 @@ public final class Misc {
         return sb.toString();
     }
 
-    
+
     public static @Nonnull String join(@Nonnull Object[] ao, @Nonnull String sBetween) {
         StringBuilder sb = new StringBuilder();
         boolean blnFirst = true;
@@ -215,17 +185,17 @@ public final class Misc {
         return sb.toString();
     }
 
-    /** Splits a string into an array of ints. 
+    /** Splits a string into an array of ints.
      *  Returns null if non-int values encountered. */
     public static @CheckForNull int[] splitInt(@Nonnull String s, @Nonnull String regex) {
         String[] asSplit = s.split(regex);
         return stringArrayToIntArray(asSplit);
     }
-    
+
     public static @CheckForNull long[] splitLong(@Nonnull String s, @Nonnull String regex) {
         String[] split = s.split(regex);
         long[] ai = new long[split.length];
-        
+
         try {
             for (int i = 0; i < split.length; i++) {
                 ai[i] = Long.parseLong(split[i]);
@@ -236,7 +206,7 @@ public final class Misc {
             return null;
         }
     }
-    
+
     /** Parses an array of strings into an array of ints. If there is any
      *  error, or if any of the values are negative, null is returned. */
     public static @CheckForNull int[] stringArrayToIntArray(@Nonnull String[] as) {
@@ -246,26 +216,13 @@ public final class Misc {
                 aiVals[i] = Integer.parseInt(as[i]);
                 if (aiVals[i] < 0) return null;
             }
-            
+
             return aiVals;
         } catch (NumberFormatException ex) {
             return null;
         }
     }
-    
-    private final static String[] ZERO_PAD = new String[] {
-        "", "0", "00", "000", "0000", "00000", "000000", "0000000", "00000000",
-        "000000000", "0000000000", "00000000000", "000000000000",
-        "0000000000000", "00000000000000", "000000000000000",
-        "0000000000000000", "00000000000000000", "000000000000000000",
-        "0000000000000000000", "00000000000000000000", "000000000000000000000",
-        "0000000000000000000000", "00000000000000000000000",
-        "000000000000000000000000", "0000000000000000000000000",
-        "00000000000000000000000000", "000000000000000000000000000",
-        "0000000000000000000000000000", "00000000000000000000000000000",
-        "000000000000000000000000000000", "0000000000000000000000000000000",
-        "00000000000000000000000000000000"
-    };
+
     public static @Nonnull String bitsToString(long lng, int iLength) {
         String sBin = Long.toBinaryString(lng);
         return zeroPadString(sBin, iLength, true);
@@ -276,14 +233,21 @@ public final class Misc {
         return zeroPadString(sInt, iLength, false);
     }
 
+    /** Left-pad the string with zeros to the given length, trimming if shorter
+     * when desired. */
     public static @Nonnull String zeroPadString(@Nonnull String s, int iLength, boolean blnTrim) {
         int iSLen = s.length();
-        if (iSLen < iLength)
-            return ZERO_PAD[iLength - iSLen] + s;
-        else if (iSLen > iLength && blnTrim)
+        if (iSLen < iLength) {
+            char[] acRet = new char[iLength];
+            int i = iLength - iSLen;
+            Arrays.fill(acRet, 0, i, '0');
+            s.getChars(0, iSLen, acRet, i);
+            return new String(acRet);
+        } else if (iSLen > iLength && blnTrim) {
             return s.substring(iSLen - iLength);
-        else
+        } else {
             return s;
+        }
     }
 
     /*** Log a message that has parameters and exception. */

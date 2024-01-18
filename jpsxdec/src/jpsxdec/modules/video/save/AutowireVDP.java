@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2019  Michael Sabin
+ * Copyright (C) 2019-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -37,167 +37,86 @@
 
 package jpsxdec.modules.video.save;
 
-import java.util.Arrays;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 import jpsxdec.modules.SectorClaimSystem;
-import jpsxdec.modules.sharedaudio.DecodedAudioPacket;
-import jpsxdec.modules.sharedaudio.ISectorAudioDecoder;
+import jpsxdec.modules.audio.DecodedAudioPacket;
+import jpsxdec.modules.audio.ISectorClaimToDecodedAudio;
 import jpsxdec.modules.video.IDemuxedFrame;
-import jpsxdec.modules.video.ISectorClaimToDemuxedFrame;
+import jpsxdec.modules.video.ISectorClaimToFrameAndAudio;
 
 /** Automatically connects all video pipeline and other components. */
 public class AutowireVDP {
 
-    // Expose these publicly for the saver to send data into
+    private boolean _blnWired = false;
+
+    /** This is also a {@link VDP.IMdecProducer}, see its javadoc for why. */
+    @CheckForNull
+    private Frame2BitstreamOrMdec _frame2BitstreamOrMdec;
+    public void setFrame2BitstreamOrMdec(@Nonnull Frame2BitstreamOrMdec frame2BitstreamOrMdec) {
+        assertNull(_frame2BitstreamOrMdec);
+        assertNull(_frameListener);
+        assertNull(_bsProducer);
+        _frame2BitstreamOrMdec = frame2BitstreamOrMdec;
+    }
+
+    @CheckForNull
+    private VDP.IBitstreamProducer _bsProducer;
+    public void setBitstreamProducer(@Nonnull VDP.IBitstreamProducer publishesBs) {
+        assertNull(_bsProducer);
+        assertNull(_frame2BitstreamOrMdec);
+        _bsProducer = publishesBs;
+    }
+
     @CheckForNull
     private VDP.IBitstreamListener _bitstreamListener;
+    // Expose this publicly for the saver to send data into
     public @CheckForNull VDP.IBitstreamListener getBitstreamListener() {
         return _bitstreamListener;
     }
+    public void setBitstreamListener(@Nonnull VDP.IBitstreamListener bitstreamListener) {
+        assertNull(_bitstreamListener);
+        _bitstreamListener = bitstreamListener;
+    }
+
+    @CheckForNull
+    private VDP.IMdecProducer _mdecProducer;
+    public void setMdecProducer(@Nonnull VDP.IMdecProducer mdecProducer) {
+        assertNull(_mdecProducer);
+        _mdecProducer = mdecProducer;
+    }
+
     @CheckForNull
     private VDP.IMdecListener _mdecListener;
+    // Expose this publicly for the saver to send data into
     public @CheckForNull VDP.IMdecListener getMdecListener() {
         return _mdecListener;
     }
-
-    // Expose this publicly to open/close the AVI
-    @CheckForNull
-    private VDP.ToAvi _toAvi;
-    public @CheckForNull VDP.ToAvi getAvi() {
-        return _toAvi;
-    }
-
-
-    // =========================================================================
-
-    public void autowire() throws IllegalStateException {
-        _bitstreamListener = chooseOnlyOne(_bitstream2File, _bitstream2Mdec);
-        _mdecListener = chooseOnlyOne(_mdec2Decoded, _mdec2File, _mdec2Jpeg, _mdec2MjpegAvi);
-
-        if (_frame2Bitstream != null) {
-            _frame2Bitstream.setListener(_bitstreamListener);
-            _frame2Bitstream.setListener(_mdecListener);
-        }
-
-        wireDecodedIntoMdec();
-        wireMdecIntoBitstream();
-        _toAvi = chooseOnlyOne(_decoded2JYuvAvi, _decoded2RgbAvi, _decoded2YuvAvi, _mdec2MjpegAvi);
-        wireGenFileListener();
-        wireSectorClaim();
-        wireAudioAndFrame();
-    }
-
-    private void wireGenFileListener() {
-        if (_generatedFileListener == null)
-            return;
-        if (_bitstream2File != null)
-            _bitstream2File.setGenFileListener(_generatedFileListener);
-        if (_decoded2JavaImage != null)
-            _decoded2JavaImage.setGenFileListener(_generatedFileListener);
-        if (_decoded2JYuvAvi != null)
-            _decoded2JYuvAvi.setGenFileListener(_generatedFileListener);
-        if (_decoded2RgbAvi != null)
-            _decoded2RgbAvi.setGenFileListener(_generatedFileListener);
-        if (_decoded2YuvAvi != null)
-            _decoded2YuvAvi.setGenFileListener(_generatedFileListener);
-        if (_mdec2File != null)
-            _mdec2File.setGenFileListener(_generatedFileListener);
-        if (_mdec2Jpeg != null)
-            _mdec2Jpeg.setGenFileListener(_generatedFileListener);
-        if (_mdec2MjpegAvi != null)
-            _mdec2MjpegAvi.setGenFileListener(_generatedFileListener);
-    }
-
-    private void wireMdecIntoBitstream() {
-        VDP.IMdecListener mdecListener = chooseOnlyOne(_mdec2Decoded, _mdec2File, _mdec2Jpeg, _mdec2MjpegAvi);
-        if (_bitstream2Mdec == null)
-            return;
-        if (mdecListener != null)
-            _bitstream2Mdec.setMdecListener(mdecListener);
-    }
-
-    private void wireDecodedIntoMdec() {
-        if (_decodedListener == null)
-            _decodedListener = chooseOnlyOne(_decoded2JYuvAvi, _decoded2JavaImage, _decoded2RgbAvi, _decoded2YuvAvi);
-        if (_decodedListener == null)
-            return;
-        if (_mdec2Decoded != null)
-            _mdec2Decoded.setDecoded(_decodedListener);
-    }
-
-    private static @CheckForNull <T> T chooseOnlyOne(T... elements) {
-        T nonNull = null;
-        for (T element : elements) {
-            if (element != null) {
-                if (nonNull != null)
-                    throw new IllegalStateException("More than one set: " + Arrays.toString(elements));
-                nonNull = element;
-            }
-        }
-        return nonNull;
-    }
-
-    // =========================================================================
-    // Sector claim, audio, video
-
-    @CheckForNull
-    private SectorClaimSystem _sectorClaimSystem;
-    public void attachToSectorClaimer(@Nonnull SectorClaimSystem sectorClaimSystem) {
-        assertNull(_sectorClaimSystem);
-        _sectorClaimSystem = sectorClaimSystem;
-    }
-
-    private void wireSectorClaim() {
-        if (_sectorClaimSystem == null)
-            return;
-        if (_sectorAudioDecoder != null)
-            _sectorAudioDecoder.attachToSectorClaimer(_sectorClaimSystem);
-        if (_sectorClaimToDemuxedFrame != null)
-            _sectorClaimToDemuxedFrame.attachToSectorClaimer(_sectorClaimSystem);
+    public void setMdecListener(@Nonnull VDP.IMdecListener mdecListener) {
+        assertNull(_mdecListener);
+        _mdecListener = mdecListener;
     }
 
     @CheckForNull
-    private ISectorAudioDecoder _sectorAudioDecoder;
-    public void setAudioDecoder(@Nonnull ISectorAudioDecoder sectorAudioDecoder) {
-        assertNull(_sectorAudioDecoder);
-        _sectorAudioDecoder = sectorAudioDecoder;
-    }
-    @CheckForNull
-    private ISectorClaimToDemuxedFrame _sectorClaimToDemuxedFrame;
-    public void setMap(@Nonnull ISectorClaimToDemuxedFrame sectorClaimToDemuxedFrame) {
-        assertNull(_sectorClaimToDemuxedFrame);
-        _sectorClaimToDemuxedFrame = sectorClaimToDemuxedFrame;
-    }
-    
-    @CheckForNull
-    private IDemuxedFrame.Listener _frameListener;
-    public void setFrameListener(@Nonnull IDemuxedFrame.Listener frameListener) {
-        assertNull(_frameListener);
-        _frameListener = frameListener;
-    }
-    @CheckForNull
-    private Frame2Bitstream _frame2Bitstream;
-    public void setMap(@Nonnull Frame2Bitstream frame2Bitstream) {
-        setFrameListener(frame2Bitstream);
-        _frame2Bitstream = frame2Bitstream;
+    private VDP.IDecodedProducer _decodedProducer;
+    public void setDecodedProducer(@Nonnull VDP.IDecodedProducer decodedProducer) {
+        assertNull(_decodedProducer);
+        _decodedProducer = decodedProducer;
     }
 
     @CheckForNull
-    private DecodedAudioPacket.Listener _audioListener;
-    public void setAudioPacketListener(@Nonnull DecodedAudioPacket.Listener audioListener) {
-        assertNull(_audioListener);
-        _audioListener = audioListener;
+    private VDP.IDecodedListener _decodedListener;
+    public void setDecodedListener(@Nonnull VDP.IDecodedListener decodedListener) {
+        assertNull(_decodedListener);
+        _decodedListener = decodedListener;
     }
 
-    private void wireAudioAndFrame() {
-        if (_sectorAudioDecoder != null && _audioListener != null)
-            _sectorAudioDecoder.setAudioListener(_audioListener);
-        if (_sectorClaimToDemuxedFrame != null && _frameListener != null)
-            _sectorClaimToDemuxedFrame.setFrameListener(_frameListener);
+    @CheckForNull
+    private VDP.IFileGenerator _fileGenerator;
+    public void setFileGenerator(@Nonnull VDP.IFileGenerator publishesFiles) {
+        assertNull(_fileGenerator);
+        _fileGenerator = publishesFiles;
     }
-
-    // =========================================================================
 
     @CheckForNull
     private VDP.GeneratedFileListener _generatedFileListener;
@@ -206,90 +125,128 @@ public class AutowireVDP {
         _generatedFileListener = generatedFileListener;
     }
 
-    // =========================================================================
-    // Bitstream
-
-
+    // Expose this publicly to open/close the video
     @CheckForNull
-    private VDP.Bitstream2File _bitstream2File;
-    public void setMap(@Nonnull VDP.Bitstream2File bitstream2File) {
-        assertNull(_bitstream2File);
-        _bitstream2File = bitstream2File;
+    private VDP.ToVideo _toVideo;
+    public @CheckForNull VDP.ToVideo getVideo() {
+        return _toVideo;
     }
-
-    @CheckForNull
-    private VDP.Bitstream2Mdec _bitstream2Mdec;
-    public void setMap(@Nonnull VDP.Bitstream2Mdec bitstream2Mdec) {
-        assertNull(_bitstream2Mdec);
-        _bitstream2Mdec = bitstream2Mdec;
+    public void setVideo(@Nonnull VDP.ToVideo toVideo) {
+        assertNull(_toVideo);
+        _toVideo = toVideo;
     }
 
     // =========================================================================
-    // decoded
+    // compound setters
 
-    @CheckForNull
-    private VDP.Decoded2JavaImage _decoded2JavaImage;
-    public void setMap(@Nonnull VDP.Decoded2JavaImage decoded2JavaImage) {
-        assertNull(_decoded2JavaImage);
-        _decoded2JavaImage = decoded2JavaImage;
+    public void setBitstream2Mdec(@Nonnull VDP.Bitstream2Mdec bs2mdec) {
+        setMdecProducer(bs2mdec);
+        setBitstreamListener(bs2mdec);
     }
 
-    // =========================================================================
-    // MDEC 
-
-    @CheckForNull
-    private VDP.Mdec2Decoded _mdec2Decoded;
-    public void setMap(@Nonnull VDP.Mdec2Decoded mdec2Decoded) {
-        assertNull(_mdec2Decoded);
-        _mdec2Decoded = mdec2Decoded;
+    public <T extends VDP.IMdecListener & VDP.IDecodedProducer> void setMdec2Decoded(@Nonnull T m2d) {
+        setMdecListener(m2d);
+        setDecodedProducer(m2d);
     }
-
-    @CheckForNull
-    private VDP.Mdec2File _mdec2File;
-    public void setMap(@Nonnull VDP.Mdec2File mdec2File) {
-        assertNull(_mdec2File);
-        _mdec2File = mdec2File;
+    public <T extends VDP.IDecodedListener & VDP.IFileGenerator> void setDecoded2File(@Nonnull T d2f) {
+        setDecodedListener(d2f);
+        setFileGenerator(d2f);
     }
-
-    @CheckForNull
-    private VDP.Mdec2Jpeg _mdec2Jpeg;
-    public void setMap(@Nonnull VDP.Mdec2Jpeg mdec2Jpeg) {
-        assertNull(_mdec2Jpeg);
-        _mdec2Jpeg = mdec2Jpeg;
+    public <T extends VDP.IMdecListener & VDP.IFileGenerator> void setMdec2File(@Nonnull T m2f) {
+        setMdecListener(m2f);
+        setFileGenerator(m2f);
     }
 
     // =========================================================================
-    // AVI 
+
+    public void autowire() throws IllegalStateException {
+        if (_blnWired)
+            throw new IllegalStateException("Already wired");
+        _blnWired = true;
+
+        if (_sectorClaimSystem != null) {
+            if (_sectorClaimToDecodedAudio != null)
+                _sectorClaimToDecodedAudio.attachToSectorClaimer(_sectorClaimSystem);
+            else if (_sectorClaimToFrameAndAudio != null)
+                _sectorClaimToFrameAndAudio.attachToSectorClaimer(_sectorClaimSystem);
+        }
+
+        if (_sectorClaimToDecodedAudio != null && _audioListener != null)
+            _sectorClaimToDecodedAudio.setAudioListener(_audioListener);
+
+        if (_sectorClaimToFrameAndAudio != null) {
+            if (_audioListener != null)
+                _sectorClaimToFrameAndAudio.setAudioListener(_audioListener);
+
+            if (_frameListener != null)
+                _sectorClaimToFrameAndAudio.setFrameListener(_frameListener);
+            else if (_frame2BitstreamOrMdec != null)
+                _sectorClaimToFrameAndAudio.setFrameListener(_frame2BitstreamOrMdec);
+        }
+
+        if (_bitstreamListener != null) {
+            if (_bsProducer != null)
+                _bsProducer.setListener(_bitstreamListener);
+            else if (_frame2BitstreamOrMdec != null)
+                _frame2BitstreamOrMdec.setListener(_bitstreamListener);
+        }
+
+        if (_mdecListener != null) {
+            if (_mdecProducer != null)
+                _mdecProducer.setListener(_mdecListener);
+            if (_frame2BitstreamOrMdec != null)
+                _frame2BitstreamOrMdec.setListener(_mdecListener);
+        }
+
+        if (_decodedListener != null && _decodedProducer != null)
+            _decodedProducer.setDecodedListener(_decodedListener);
+
+        if (_generatedFileListener != null && _fileGenerator != null)
+            _fileGenerator.setGenFileListener(_generatedFileListener);
+    }
+
+    // =========================================================================
+    // Sector claim, audio, video
 
     @CheckForNull
-    private VDP.IDecodedListener _decodedListener;
-    public void setDecodedListener(@Nonnull VDP.IDecodedListener decodedListener) {
-        assertNull(_decodedListener);
-        _decodedListener = decodedListener;
+    private SectorClaimSystem _sectorClaimSystem;
+    public void setSectorClaimSystem(@Nonnull SectorClaimSystem sectorClaimSystem) {
+        assertNull(_sectorClaimSystem);
+        _sectorClaimSystem = sectorClaimSystem;
     }
-    @CheckForNull
-    private VDP.Decoded2JYuvAvi _decoded2JYuvAvi;
-    public void setToAvi(@Nonnull VDP.Decoded2JYuvAvi decoded2JYuvAvi) {
-        assertNull(_decoded2JYuvAvi);
-        _decoded2JYuvAvi = decoded2JYuvAvi;
+    public @CheckForNull SectorClaimSystem getSectorClaimSystem() {
+        return _sectorClaimSystem;
     }
+
     @CheckForNull
-    private VDP.Decoded2RgbAvi _decoded2RgbAvi;
-    public void setToAvi(@Nonnull VDP.Decoded2RgbAvi decoded2RgbAvi) {
-        assertNull(_decoded2RgbAvi);
-        _decoded2RgbAvi = decoded2RgbAvi;
+    private ISectorClaimToDecodedAudio _sectorClaimToDecodedAudio;
+    public void setSectorClaim2DecodedAudio(@Nonnull ISectorClaimToDecodedAudio sectorClaimToDecodedAudio) {
+        assertNull(_sectorClaimToDecodedAudio);
+        assertNull(_sectorClaimToFrameAndAudio);
+        _sectorClaimToDecodedAudio = sectorClaimToDecodedAudio;
     }
+
     @CheckForNull
-    private VDP.Decoded2YuvAvi _decoded2YuvAvi;
-    public void setToAvi(@Nonnull VDP.Decoded2YuvAvi decoded2YuvAvi) {
-        assertNull(_decoded2YuvAvi);
-        _decoded2YuvAvi = decoded2YuvAvi;
+    private ISectorClaimToFrameAndAudio _sectorClaimToFrameAndAudio;
+    public void setSectorClaim2FrameAndAudio(@Nonnull ISectorClaimToFrameAndAudio sectorClaimToFrameAndAudio) {
+        assertNull(_sectorClaimToFrameAndAudio);
+        assertNull(_sectorClaimToDecodedAudio);
+        _sectorClaimToFrameAndAudio = sectorClaimToFrameAndAudio;
     }
+
     @CheckForNull
-    private VDP.Mdec2MjpegAvi _mdec2MjpegAvi;
-    public void setToAvi(@Nonnull VDP.Mdec2MjpegAvi mdec2MjpegAvi) {
-        assertNull(_mdec2MjpegAvi);
-        _mdec2MjpegAvi = mdec2MjpegAvi;
+    private IDemuxedFrame.Listener _frameListener;
+    public void setFrameListener(@Nonnull IDemuxedFrame.Listener frameListener) {
+        assertNull(_frameListener);
+        assertNull(_frame2BitstreamOrMdec);
+        _frameListener = frameListener;
+    }
+
+    @CheckForNull
+    private DecodedAudioPacket.Listener _audioListener;
+    public void setAudioPacketListener(@Nonnull DecodedAudioPacket.Listener audioListener) {
+        assertNull(_audioListener);
+        _audioListener = audioListener;
     }
 
     // =========================================================================

@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2016-2019  Michael Sabin
+ * Copyright (C) 2016-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -110,8 +110,9 @@ public class SpuSaverBuilderGui extends DiscItemSaverBuilderGui {
         gbc.insets.left = iMargin;
         gbc.insets.right = iMargin;
         add(_chkAutoPlay, gbc);
-        
+
         _btnPreviewStop.addActionListener(new ActionListener() {
+            @Override
             public void actionPerformed(ActionEvent e) {
                 previewStopButtonClick(e);
             }
@@ -124,7 +125,7 @@ public class SpuSaverBuilderGui extends DiscItemSaverBuilderGui {
     public boolean useSaverBuilder(@Nonnull DiscItemSaverBuilder saverBuilder) {
         ItemPlayer ip = _itemPlayer;
         if (ip != null) {
-            _itemPlayer.action(Action.STOP);
+            ip.action(Action.STOP);
             _itemPlayer = null;
         }
         boolean blnIsMatch = _bl.changeSourceBuilder(saverBuilder);
@@ -221,13 +222,12 @@ public class SpuSaverBuilderGui extends DiscItemSaverBuilderGui {
                         _bs.action(Action.PLAY);
                         double t5 = System.currentTimeMillis() / 1000.0;
                     }
-                } catch (LineUnavailableException ex) {
-                    ex.printStackTrace();
-                } catch (IOException ex) {
+                } catch (LineUnavailableException | IOException ex) {
                     ex.printStackTrace();
                 }
             }
 
+            @Override
             public void run() {
                 try {
                     while (!_clip.isRunning() && !_blnIsDone) {
@@ -296,7 +296,8 @@ public class SpuSaverBuilderGui extends DiscItemSaverBuilderGui {
                 SwingUtilities.invokeLater(this);
             }
         }
-        
+
+        @Override
         public void run() {
             if (_blnShowPreview) {
                 _btn.setText("Preview"); // I18N
@@ -319,28 +320,33 @@ public class SpuSaverBuilderGui extends DiscItemSaverBuilderGui {
             );
         }
 
-        protected class AudioFormat extends AbstractComboExtension {
+        protected class AudioFormat extends AbstractComboExtension<SpuSaverBuilder.SpuSaverFormat> {
             public AudioFormat() {
                 super(I.GUI_SAVE_AS_LABEL(), _bl.getBuilder().getFileBaseName());
             }
+            @Override
             public int getSize() {
                 return _bl.getBuilder().getContainerFormat_listSize();
             }
-            public Object getElementAt(int index) {
+            @Override
+            public SpuSaverBuilder.SpuSaverFormat getElementAt(int index) {
                 return _bl.getBuilder().getContainerFormat_listItem(index);
             }
+            @Override
             public void setSelectedItem(Object anItem) {
                 _bl.getBuilder().setContainerForamt((SpuSaverBuilder.SpuSaverFormat) anItem);
             }
+            @Override
             public Object getSelectedItem() {
                 return _bl.getBuilder().getContainerFormat();
             }
+            @Override
             public String getBaseName() {
                 return _bl.getBuilder().getFileBaseName();
             }
         }
 
-        private class SampleRate extends AbstractCombo {
+        private class SampleRate extends AbstractCombo<Integer> {
 
             public SampleRate() {
                 super(new UnlocalizedMessage("Sample rate:"), false); // I18N
@@ -353,7 +359,7 @@ public class SpuSaverBuilderGui extends DiscItemSaverBuilderGui {
             }
 
             @Override
-            public Object getElementAt(int index) {
+            public Integer getElementAt(int index) {
                 return _bl.getBuilder().getSampleRate_listItem(index);
             }
 

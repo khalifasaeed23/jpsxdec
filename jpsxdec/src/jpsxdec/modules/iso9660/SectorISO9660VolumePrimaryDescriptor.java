@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -50,10 +50,10 @@ import jpsxdec.util.ByteArrayFPIS;
 /** Sector containing the ISO9660 Volume Primary Descriptor. I believe
  * this usually falls at sector 16 in the disc image. */
 public class SectorISO9660VolumePrimaryDescriptor extends IdentifiedSector {
-    
+
     @CheckForNull
     private VolumePrimaryDescriptor _primaryDescriptor;
-    
+
     public SectorISO9660VolumePrimaryDescriptor(@Nonnull CdSector cdSector) {
         super(cdSector);
         if (isSuperInvalidElseReset()) return;
@@ -74,7 +74,7 @@ public class SectorISO9660VolumePrimaryDescriptor extends IdentifiedSector {
         }
         setProbability(100);
     }
-    
+
     public int getIdentifiedUserDataSize() {
         return getCdSector().getCdUserDataSize();
     }
@@ -83,6 +83,7 @@ public class SectorISO9660VolumePrimaryDescriptor extends IdentifiedSector {
         return getCdSector().getCdUserDataStream();
     }
 
+    @Override
     public @Nonnull String getTypeName() {
         return "ISO9660 Volume Primary Descriptor";
     }

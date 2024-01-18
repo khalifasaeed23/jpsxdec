@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -56,7 +56,7 @@ public enum FrameCompareIs {
     GREATERTHAN { public boolean is(FrameCompareIs x) {
         return x == GREATERTHAN;
     }},
-    
+
     GREATERTHANEQUAL { public boolean is(FrameCompareIs x) {
         return x == GREATERTHANEQUAL;
     }},

@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -44,7 +44,7 @@ import jpsxdec.util.Fraction;
 
 /** Shared common video properties. Can be serialized. For use in disc items. */
 public class SectorBasedVideoInfo {
-    
+
     private static final String SECTORSPERFRAME_KEY = "Sectors/Frame";
     @Nonnull
     private final Fraction _sectorsPerFrame;
@@ -76,7 +76,7 @@ public class SectorBasedVideoInfo {
         serial.addNumber(FRAME1_LAST_SECTOR_KEY, _iFirstFrameLastSector);
     }
 
-    
+
     public @Nonnull Fraction getSectorsPerFrame() {
         return _sectorsPerFrame;
     }

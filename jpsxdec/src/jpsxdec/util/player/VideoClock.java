@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2019  Michael Sabin
+ * Copyright (C) 2019-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -39,14 +39,19 @@ package jpsxdec.util.player;
 
 import javax.annotation.Nonnull;
 
-/** A video timer backed by the system clock.
- * Manages its own even thread and queue. */
+/**
+ * A video timer backed by the system clock.
+ * Manages its own event thread and event queue.
+ */
 class VideoClock extends VideoTimer implements Runnable {
+
+    @Nonnull
+    private final Thread _eventThread;
 
     private long _lngStartTime = -1;
     private long _lngPausedTime = -1;
-    @Nonnull
-    private final Thread _eventThread;
+
+
     // TODO want unbounded queue
     private final ClosableBoundedBlockingQueue<PlayController.Event> _eventQueue =
             new ClosableBoundedBlockingQueue<PlayController.Event>(100);
@@ -87,6 +92,7 @@ class VideoClock extends VideoTimer implements Runnable {
         _eventQueue.addWithCapacityCheck(PlayController.Event.Play);
     }
 
+    @Override
     public synchronized long getNanoTime() {
         if (_lngStartTime < 0)
             return 0;
@@ -116,6 +122,7 @@ class VideoClock extends VideoTimer implements Runnable {
         super.terminate();
     }
 
+    @Override
     public void run() {
         try {
             while (true) {

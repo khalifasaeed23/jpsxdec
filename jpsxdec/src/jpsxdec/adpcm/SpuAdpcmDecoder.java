@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -47,7 +47,7 @@ import javax.annotation.Nonnull;
 import javax.sound.sampled.AudioFormat;
 import jpsxdec.util.IO;
 
-/** PlayStation 
+/** PlayStation
  * Sound Processing Unit (SPU)
  * Adaptive Differential Pulse Code Modulation (ADPCM)
  * decoder.
@@ -100,7 +100,7 @@ public abstract class SpuAdpcmDecoder {
 
     // =========================================================================
     // instance
-    
+
     @Nonnull
     protected final SpuSoundUnitDecoder _leftOrMonoSoundUnitDecoder;
 
@@ -124,6 +124,7 @@ public abstract class SpuAdpcmDecoder {
             blnHadCorruption = false;
         }
 
+        @Override
         public @Nonnull LogContext copy() {
             LogContext cpy = new LogContext();
             cpy.iSoundUnitsDecoded = iSoundUnitsDecoded;
@@ -160,8 +161,7 @@ public abstract class SpuAdpcmDecoder {
         return _leftOrMonoSoundUnitDecoder.getVolume();
     }
 
-    /** Returns if the last call to
-     * {@link #decode(java.io.InputStream, java.io.InputStream, int, java.io.OutputStream)}
+    /** Returns if the last call to {@code decode(...)}
      * encountered corruption in the sound parameters. */
     public boolean hadCorruption() {
         return _logContext.blnHadCorruption;
@@ -195,7 +195,7 @@ public abstract class SpuAdpcmDecoder {
         public int getBytesPerSampleFrame() {
             return 2;
         }
-    
+
         /** Decodes a requested amount of sound units from the input stream
          * and writes it to the output stream. To know the amount of data that
          * will be written to the output stream, use
@@ -234,7 +234,7 @@ public abstract class SpuAdpcmDecoder {
             {
                 IO.writeInt16LE(out, _leftOrMonoSoundUnitDecoder.getDecodedPcmSample(iSampleIdx));
             }
-            
+
             _logContext.iChannel = -1;
             return SoundUnitDecoder.SAMPLES_PER_SOUND_UNIT;
         }
@@ -294,7 +294,7 @@ public abstract class SpuAdpcmDecoder {
 
             _logContext.iChannel = -1;
 
-            for (int iSampleIdx = 0; 
+            for (int iSampleIdx = 0;
                  iSampleIdx < SoundUnitDecoder.SAMPLES_PER_SOUND_UNIT;
                  iSampleIdx++, _logContext.lngSampleFramesWritten++)
             {
@@ -305,7 +305,7 @@ public abstract class SpuAdpcmDecoder {
         }
     }
 
-    
+
     protected static class SpuSoundUnitDecoder {
         private final SoundUnitDecoder _decoder = new SoundUnitDecoder(K0K1Filter.SPU);
         @Nonnull

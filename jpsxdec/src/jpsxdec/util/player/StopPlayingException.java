@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2019  Michael Sabin
+ * Copyright (C) 2019-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -37,11 +37,10 @@
 
 package jpsxdec.util.player;
 
-import java.io.IOException;
-
-/** Exception to indicate that all player operations should terminate
- * immediately. */
-public class StopPlayingException extends IOException {
+/**
+ * Exception to indicate that all player operations should terminate immediately.
+ */
+public class StopPlayingException extends Exception {
 
     public StopPlayingException() {
     }

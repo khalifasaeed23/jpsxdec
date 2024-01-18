@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -41,7 +41,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.annotation.Nonnull;
 
-    
+
 /** A CD "XA" sector. Here we use XA for what it officially stands for:
  * eXtended Architecture. It is defined in the "Green Book" CD standard.
  * This header contains a file number, a channel, a sub-more, and coding info.
@@ -53,7 +53,7 @@ public class CdSectorXaSubHeader {
 
     private static final Logger LOG = Logger.getLogger(CdSectorXaSubHeader.class.getName());
 
-    private static enum IssueType {
+    private enum IssueType {
         EQUAL_BOTH_GOOD(0) {public void err(String sName, String sVal1, String sVal2, int iConfidenceBalance, StringBuilder sb) {
             throw new IllegalStateException("Should never happen");
         }},
@@ -128,7 +128,7 @@ public class CdSectorXaSubHeader {
     private final int _iChannel1;                // [1 byte] 0-31 for ADPCM audio
     private final int _iChannel2;
     @Nonnull private final IssueType _eChannelIssue;
-    public int getChannel() { 
+    public int getChannel() {
         switch (_eChannelIssue) {
             case DIFF_1BAD2GOOD:
                 return _iChannel2;
@@ -267,7 +267,7 @@ public class CdSectorXaSubHeader {
         return String.format("File.Channel:%d.%d Submode:%s",
                     getFileNumber(), getChannel(), getSubMode());
     }
-    
+
     //**************************************************************************
 
     public static class SubMode {
@@ -279,17 +279,17 @@ public class CdSectorXaSubHeader {
             _iSubmode = i;
         }
 
-        /**'M'*/public static final int MASK_EOF_MARKER = 0x80;
+        /**'F'*/public static final int MASK_END_OF_FILE = 0x80;
         /**'R'*/public static final int MASK_REAL_TIME = 0x40;
         /**'2'*/public static final int MASK_FORM = 0x20;
         /**'T'*/public static final int MASK_TRIGGER = 0x10;
         /**'D'*/public static final int MASK_DATA = 0x08;
         /**'A'*/public static final int MASK_AUDIO = 0x04;
         /**'V'*/public static final int MASK_VIDEO = 0x02;
-        /**'E'*/public static final int MASK_END_AUDIO = 1;
+        /**'E'*/public static final int MASK_END_OF_RECORD = 1;
 
         /** bit 7:  0 for all sectors except last sector of a file. */
-        public boolean getEofMarker() { return (_iSubmode & 0x80) != 0; }
+        public boolean getEndOfFile() { return (_iSubmode & 0x80) != 0; }
         /** bit 6:  1 for real time mode. */
         public boolean getRealTime() { return (_iSubmode & 0x40) != 0; }
         /** bit 5: 1 for Form 1, 2 for Form 2. */
@@ -305,8 +305,8 @@ public class CdSectorXaSubHeader {
         /** bit 1:  1 for video sector.
          *          (should be) Mutually exclusive with bits 3 and 2. */
         public boolean getVideo() { return (_iSubmode & 0x02) != 0; }
-        /** bit 0:  identifies end of audio frame */
-        public boolean getEndAudio() { return (_iSubmode & 1) != 0; }
+        /** bit 0:  identifies end of record. */
+        public boolean getEndOfRecord() { return (_iSubmode & 1) != 0; }
 
         /** Returns the submode bits masked against the given value. */
         public int mask(int i) {
@@ -317,6 +317,7 @@ public class CdSectorXaSubHeader {
 
 
         public boolean isValid() {
+            // TODO also check Data/Audio/Video exclusivity cuz it's proven extremely reliable
             int iByte = (_iSubmode >> 1) & 7;
             int iCount = 0;
             for (int i=8; i > 0; i >>= 1) {
@@ -330,14 +331,14 @@ public class CdSectorXaSubHeader {
         /**
          * Return 8 character string representing the 8 bit flags:
          *<pre>
-         * M - EOF marker
-         * R - Real-time
-         * 2 - Form 1/2
-         * T - Trigger
-         * D - Data
-         * A - Audio
-         * V - Video
-         * E - End audio
+         * F - End of file (EOF)
+         * R - Real-time (RT)
+         * 2 - Form 1/2 (F)
+         * T - Trigger (T)
+         * D - Data (D)
+         * A - Audio (A)
+         * V - Video (V)
+         * E - End of record (EOR)
          *</pre>
          */
         @Override
@@ -372,14 +373,14 @@ public class CdSectorXaSubHeader {
             "-R-T",
             "-R2-",
             "-R2T",
-            "M---",
-            "M--T",
-            "M-2-",
-            "M-2T",
-            "MR--",
-            "MR-T",
-            "MR2-",
-            "MR2T",
+            "F---",
+            "F--T",
+            "F-2-",
+            "F-2T",
+            "FR--",
+            "FR-T",
+            "FR2-",
+            "FR2T",
         };
 
     }
@@ -402,7 +403,7 @@ public class CdSectorXaSubHeader {
 
         /** bits 3,2: 00=37.8kHz (A,B format)
          *            01=18.9kHz */
-        public int getSampleRate() { return (_iCodinginfo & 0x04) == 0 ? 37800 : 18900; }
+        public int getSamplesPerSecond() { return (_iCodinginfo & 0x04) == 0 ? 37800 : 18900; }
 
         /** bits 1,0: 00=mono 01=stereo,
          *            other values reserved */
@@ -426,11 +427,11 @@ public class CdSectorXaSubHeader {
             sb.append((_iCodinginfo & 2) == 0 ? " " : "! ");
             sb.append(getBitsPerSample()).append(" bits/sample");
             sb.append((_iCodinginfo & 8) == 0 ? " " : "! ");
-            sb.append(getSampleRate()).append(" samples/sec");
+            sb.append(getSamplesPerSecond()).append("Hz");
             if ((_iCodinginfo & 32) != 0) sb.append('!');
             return sb.toString();
         }
     }
 
 }
-    
+

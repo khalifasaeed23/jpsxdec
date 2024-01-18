@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -67,10 +67,6 @@ public abstract class MdecException  {
     }
 
 
-    public static String STRV3_BLOCK_UNCOMPRESS_ERR_UNKNOWN_CHROMA_DC_VLC(int macroBlockIndex, int blockIndex, @Nonnull String variableLengthCodeBits) {
-        return String.format("Error uncompressing macro block %d.%d: Unknown chroma DC variable length code %s", macroBlockIndex, blockIndex, variableLengthCodeBits);
-    }
-
     public static String STRV3_BLOCK_UNCOMPRESS_ERR_CHROMA_DC_OOB(int macroBlockIndex, int blockIndex, int outOfBoundsValue) {
         return String.format("Error uncompressing macro block %d.%d: Chroma DC out of bounds: %d", macroBlockIndex, blockIndex, outOfBoundsValue);
     }
@@ -121,9 +117,9 @@ public abstract class MdecException  {
     }
 
     // =========================================================
-    
+
     /** Exception thrown during encoding when the source mdec stream contains
-     * too much energy to compress with that particular encoder. 
+     * too much energy to compress with that particular encoder.
      * "Too much energy" may seem like a weird way to describe it, but
      * is accurate given the nature of the DCT and working in the frequency domain.
      */

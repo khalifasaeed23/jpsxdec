@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2012-2019  Michael Sabin
+ * Copyright (C) 2012-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -47,53 +47,58 @@ import jpsxdec.i18n.ILocalizedMessage;
 
 
 public enum VideoFormat {
-    AVI_MJPG(I.VID_AVI_MJPG_DESCRIPTION(), I.VID_AVI_MJPG_COMMAND()) {
+    AVI_MJPG(I.VID_AVI_MJPG_DESCRIPTION(), "avi:mjpg") {
         public String getExtension() { return ".avi"; }
-        public boolean isAvi() { return true; }
+        public boolean isVideo() { return true; }
         public int getDecodeQualityCount() { return 0; }
         public MdecDecodeQuality getMdecDecodeQuality(int i) { throw new IndexOutOfBoundsException(); }
     },
-    AVI_RGB(I.VID_AVI_RGB_DESCRIPTION(), I.VID_AVI_RGB_COMMAND()) {
+    AVI_RGB(I.VID_AVI_RGB_DESCRIPTION(), "avi:rgb") {
         public String getExtension() { return ".avi"; }
-        public boolean isAvi() { return true; }
+        public boolean isVideo() { return true; }
     },
-    AVI_YUV(I.VID_AVI_YUV_DESCRIPTION(), I.VID_AVI_YUV_COMMAND()) {
+    AVI_YUV(I.VID_AVI_YUV_DESCRIPTION(), "avi:yuv") {
         public String getExtension() { return ".avi"; }
-        public boolean isAvi() { return true; }
+        public boolean isVideo() { return true; }
         public int getDecodeQualityCount() { return 1; }
         public MdecDecodeQuality getMdecDecodeQuality(int i) { return MdecDecodeQuality.HIGH; }
-        public boolean mustHaveEvenDims()  { return true; };
+        public boolean mustHaveEvenDims()  { return true; }
     },
-    AVI_JYUV(I.VID_AVI_JYUV_DESCRIPTION(), I.VID_AVI_JYUV_COMMAND()) {
+    AVI_JYUV(I.VID_AVI_JYUV_DESCRIPTION(), "avi:jyuv") {
         public String getExtension() { return ".avi"; }
-        public boolean isAvi() { return true; }
+        public boolean isVideo() { return true; }
         public int getDecodeQualityCount() { return 1; }
         public MdecDecodeQuality getMdecDecodeQuality(int i) { return MdecDecodeQuality.HIGH; }
-        public boolean mustHaveEvenDims()  { return true; };
+        public boolean mustHaveEvenDims()  { return true; }
     },
-    IMGSEQ_PNG(I.VID_IMG_SEQ_PNG_DESCRIPTION(), I.VID_IMG_SEQ_PNG_COMMAND(),
+    IMGSEQ_PNG(I.VID_IMG_SEQ_PNG_DESCRIPTION(), "png",
                JavaImageFormat.PNG)
     {
         public String getExtension() { return "." + JavaImageFormat.PNG.getExtension(); }
     },
-    IMGSEQ_JPG(I.VID_IMG_SEQ_JPG_DESCRIPTION(), I.VID_IMG_SEQ_JPG_COMMAND()) {
+    IMGSEQ_JPG(I.VID_IMG_SEQ_JPG_DESCRIPTION(), "jpg") {
         public String getExtension() { return ".jpg"; }
         public int getDecodeQualityCount() { return 0; }
         public MdecDecodeQuality getMdecDecodeQuality(int i) { throw new IndexOutOfBoundsException(); }
     },
-    IMGSEQ_BMP(I.VID_IMG_SEQ_BMP_DESCRIPTION(), I.VID_IMG_SEQ_BMP_COMMAND(),
+    IMGSEQ_BMP(I.VID_IMG_SEQ_BMP_DESCRIPTION(), "bmp",
                JavaImageFormat.BMP)
     {
         public String getExtension() { return "." + JavaImageFormat.BMP.getExtension(); }
     },
-    IMGSEQ_BITSTREAM(I.VID_IMG_SEQ_BS_DESCRIPTION(), I.VID_IMG_SEQ_BS_COMMAND()) {
+    IMGSEQ_TIFF(I.VID_IMG_SEQ_TIFF_DESCRIPTION(), "tiff",
+            JavaImageFormat.TIFF)
+    {
+        public String getExtension() { return "." + JavaImageFormat.TIFF.getExtension(); }
+    },
+    IMGSEQ_BITSTREAM(I.VID_IMG_SEQ_BS_DESCRIPTION(), "bs") {
         public String getExtension() { return ".bs"; }
         public int getDecodeQualityCount() { return 0; }
         public MdecDecodeQuality getMdecDecodeQuality(int i) { throw new IndexOutOfBoundsException(); }
         public boolean isCroppable() { return false; }
         public boolean needsDims() { return true; }
     },
-    IMGSEQ_MDEC(I.VID_IMG_SEQ_MDEC_DESCRIPTION(), I.VID_IMG_SEQ_MDEC_COMMAND()) {
+    IMGSEQ_MDEC(I.VID_IMG_SEQ_MDEC_DESCRIPTION(), "mdec") {
         public String getExtension() { return ".mdec"; }
         public int getDecodeQualityCount() { return 0; }
         public MdecDecodeQuality getMdecDecodeQuality(int i) { throw new IndexOutOfBoundsException(); }
@@ -107,19 +112,19 @@ public enum VideoFormat {
     private final ILocalizedMessage _guiName;
     /** How the format will be displayed on the command line. */
     @Nonnull
-    private final ILocalizedMessage _cmdLineId;
+    private final String _sCmdLineId;
     @CheckForNull
     private final JavaImageFormat _eImgFmt;
 
-    private VideoFormat(@Nonnull ILocalizedMessage description, @Nonnull ILocalizedMessage cmdLine) {
-        this(description, cmdLine, null);
+    private VideoFormat(@Nonnull ILocalizedMessage description, @Nonnull String sCmdLine) {
+        this(description, sCmdLine, null);
     }
 
-    private VideoFormat(@Nonnull ILocalizedMessage description, @Nonnull ILocalizedMessage cmdLine,
+    private VideoFormat(@Nonnull ILocalizedMessage description, @Nonnull String sCmdLine,
                         @CheckForNull JavaImageFormat imgFormat)
     {
         _guiName = description;
-        _cmdLineId = cmdLine;
+        _sCmdLineId = sCmdLine;
         _eImgFmt = imgFormat;
     }
 
@@ -127,20 +132,20 @@ public enum VideoFormat {
      *<p>
      *  Must be localized because this object is used directly. */
     public String toString() { return _guiName.getLocalizedMessage(); }
-    public @Nonnull ILocalizedMessage getCmdLine() { return _cmdLineId; }
+    public @Nonnull String getCmdLine() { return _sCmdLineId; }
     public boolean isAvailable() {
-        return _eImgFmt == null ? true : _eImgFmt.isAvailable();
+        return _eImgFmt == null || _eImgFmt.isAvailable();
     }
 
     public boolean isCroppable() { return true; }
-    public boolean mustHaveEvenDims()  { return false; };
+    public boolean mustHaveEvenDims()  { return false; }
 
     public int getDecodeQualityCount() { return MdecDecodeQuality.values().length; }
     public @Nonnull MdecDecodeQuality getMdecDecodeQuality(int i) { return MdecDecodeQuality.values()[i]; }
 
     /** If AVI, it means it can save audio, otherwise it is an image sequence. */
-    public boolean isAvi() { return false; }
-    public boolean isSequence() { return !isAvi(); }
+    public boolean isVideo() { return false; }
+    public boolean isSequence() { return !isVideo(); }
 
     public @CheckForNull JavaImageFormat getImgFmt() { return _eImgFmt; }
 
@@ -160,11 +165,11 @@ public enum VideoFormat {
     }
 
     public static @Nonnull List<VideoFormat> getAvailable() {
-        ArrayList<VideoFormat> avalable = new ArrayList<VideoFormat>();
+        ArrayList<VideoFormat> available = new ArrayList<VideoFormat>();
         for (VideoFormat fmt : values()) {
             if (fmt.isAvailable())
-                avalable.add(fmt);
+                available.add(fmt);
         }
-        return avalable;
+        return available;
     }
 }

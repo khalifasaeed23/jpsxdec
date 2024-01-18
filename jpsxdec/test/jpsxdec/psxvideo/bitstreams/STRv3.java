@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2016-2019  Michael Sabin
+ * Copyright (C) 2016-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -45,6 +45,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.LineNumberReader;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -58,18 +59,15 @@ import jpsxdec.psxvideo.mdec.MdecCode;
 import jpsxdec.psxvideo.mdec.MdecException;
 import jpsxdec.psxvideo.mdec.MdecInputStream;
 import jpsxdec.psxvideo.mdec.idct.IDCT_double;
-import jpsxdec.psxvideo.mdec.idct.StephensIDCT;
+import jpsxdec.psxvideo.mdec.idct.PsxMdecIDCT_double;
 import jpsxdec.util.BinaryDataNotRecognized;
-import jpsxdec.util.IO;
 import jpsxdec.util.Misc;
 import static org.junit.Assert.*;
 import org.junit.Test;
+import testutil.Util;
 
 
 public class STRv3 {
-
-    public STRv3() {
-    }
 
     @Test
     public void encodeDc511() throws Exception {
@@ -115,7 +113,7 @@ public class STRv3 {
 
         MdecInputStreamIterator in = new MdecInputStreamIterator(codes.iterator());
         BitStreamUncompressor_STRv3.BitStreamCompressor_STRv3 comp =
-                new BitStreamUncompressor_STRv3.BitStreamCompressor_STRv3(Calc.macroblocks(16, 16));
+                new BitStreamUncompressor_STRv3.BitStreamCompressor_STRv3(Calc.macroblocks(16, 16), iQscale);
         byte[] abBitstream = comp.compress(in);
         BitStreamUncompressor_STRv3 out = BitStreamUncompressor_STRv3.makeV3(abBitstream);
         // TODO: uncompress this
@@ -215,14 +213,14 @@ public class STRv3 {
 
         BitStreamUncompressor_STRv3.BitStreamCompressor_STRv3 comp =
                 new BitStreamUncompressor_STRv3.BitStreamCompressor_STRv3(
-                        Calc.macroblocks(iWidth, iHeight));
+                        Calc.macroblocks(iWidth, iHeight), iQscale);
         try {
             byte[] abBitstream = comp.compress(in);
             fail("Should not be able to compress this");
         } catch (MdecException.TooMuchEnergy ex) {
             // expected
         }
-        
+
     }
 
     public static class MdecInputStreamIterator implements MdecInputStream {
@@ -242,7 +240,7 @@ public class STRv3 {
 
     @Test
     public void encodeTestMax() throws Exception {
-        IDCT_double i = new StephensIDCT();
+        IDCT_double i = new PsxMdecIDCT_double();
         double[] blk = new double[64];
         Arrays.fill(blk, -128.0);
         double[] out = new double[64];
@@ -251,15 +249,16 @@ public class STRv3 {
         BufferedImage bi = ImageIO.read(STRv3.class.getResource("testmax.png"));
         PsxYCbCrImage yuv = new PsxYCbCrImage(bi);
         MdecEncoder enc = new MdecEncoder(yuv, bi.getWidth(), bi.getHeight());
-        int[] aiQscales = {1,1,1,1,1,1};
+        int iQscale = 1;
+        int[] aiQscales = {iQscale,iQscale,iQscale,iQscale,iQscale,iQscale};
         for (MacroBlockEncoder mbenc : enc) {
             mbenc.setToFullEncode(aiQscales);
         }
         BitStreamUncompressor_STRv3.BitStreamCompressor_STRv3 comp =
                 new BitStreamUncompressor_STRv3.BitStreamCompressor_STRv3(
-                        Calc.macroblocks(bi.getWidth(), bi.getHeight()));
+                        Calc.macroblocks(bi.getWidth(), bi.getHeight()), iQscale);
         byte[] abBs = comp.compress(enc.getStream());
-        byte[] abExpected = IO.readEntireStream(getClass().getResourceAsStream("testmax-EXPECTED.bs"));
+        byte[] abExpected = Util.readResource(STRv3.class, "testmax-EXPECTED.bs");
         assertArrayEquals(abExpected, abBs);
     }
 
@@ -279,7 +278,7 @@ public class STRv3 {
 
         InputStream is = STRv3.class.getResourceAsStream(sFile);
         is = new GZIPInputStream(is);
-        LineNumberReader lnr = new LineNumberReader(new InputStreamReader(is));
+        LineNumberReader lnr = new LineNumberReader(new InputStreamReader(is, StandardCharsets.US_ASCII));
         String sLine;
         while ((sLine = lnr.readLine()) != null) {
             //System.out.println(sLine);
@@ -287,9 +286,9 @@ public class STRv3 {
             assertEquals(sLine, 2, as.length);
             String sBits = as[0].replace("+", "");
             String[] asCodes = as[1].split("\\+");
-            BitStreamWriter bw = STRv2.writeHeader(3);
+            BitStreamWriter bw = new BitStreamWriter();
             bw.write(sBits);
-            byte[] ab = bw.toByteArray();
+            byte[] ab = STRv2.writeHeader(3, bw.toByteArray(BitStreamUncompressor_STRv2.LITTLE_ENDIAN_SHORT_ORDER));
             BitStreamUncompressor_STRv3 v3 = BitStreamUncompressor_STRv3.makeV3(ab);
             for (String sCode : asCodes) {
                 try {
@@ -297,8 +296,7 @@ public class STRv3 {
                     assertEquals("Line "+lnr.getLineNumber()+": "+sLine, sCode, formatMdec(code));
                 } catch (MdecException.ReadCorruption ex) {
                     if (!sCode.startsWith("!")) {
-                        AssertionError e = new AssertionError("Line "+lnr.getLineNumber()+": "+sLine);
-                        e.initCause(ex);
+                        AssertionError e = new AssertionError("Line "+lnr.getLineNumber()+": "+sLine, ex);
                         throw e;
                     }
                 }
@@ -344,13 +342,13 @@ public class STRv3 {
         }
 
         private void initFrame() throws IOException {
-            _bw = STRv2.writeHeader(3);
+            _bw = new BitStreamWriter();
             _mdecCodeBitsWritten.clear();
             _mdecCodesRead.setLength(0);
         }
 
         private void closeAndReset() throws IOException, BinaryDataNotRecognized {
-            byte[] ab = _bw.toByteArray();
+            byte[] ab = STRv2.writeHeader(3, _bw.toByteArray(BitStreamUncompressor_STRv2.LITTLE_ENDIAN_SHORT_ORDER));
             _v3 = BitStreamUncompressor_STRv3.makeV3(ab);
             _bw.reset();
             _mdecCodesRead.setLength(0);
@@ -366,7 +364,7 @@ public class STRv3 {
         public void generate(String sFile) throws Exception {
             PrintStream ps = new PrintStream(
                     new BufferedOutputStream(
-                    new FileOutputStream(sFile)));
+                    new FileOutputStream(sFile)), true, "US-ASCII");
 
             for (int iBits = 0; iBits < 1 << getDcCodeBitLength(); iBits++) {
                 ps.print(genFirstBlock(iBits));

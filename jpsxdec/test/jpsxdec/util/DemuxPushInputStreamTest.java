@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -146,7 +146,7 @@ public class DemuxPushInputStreamTest {
         DDPiece p1 = new DDPiece(new byte[0]);
         DDPiece p2 = new DDPiece(7, 11);
         DemuxPushInputStream<DDPiece> x = new DemuxPushInputStream<DDPiece>(p1);
-        
+
         x.mark(5);
         try {
             x.read();

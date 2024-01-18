@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -68,7 +68,7 @@ public class SectorAliceNullVideo extends IdentifiedSector {
         if (cdSector.isCdAudioSector()) return;
 
         // only if it has a sector header should we check if it reports DATA or VIDEO
-        if (subModeMaskMatch(SubMode.MASK_DATA | SubMode.MASK_VIDEO, 0))
+        if (subModeExistsAndMaskEquals(SubMode.MASK_DATA | SubMode.MASK_VIDEO, 0))
             return;
 
         if (_header.lngMagic != ALICE_VIDEO_SECTOR_MAGIC)
@@ -96,7 +96,7 @@ public class SectorAliceNullVideo extends IdentifiedSector {
 
     @Override
     public String toString() {
-        StringBuilder sb = 
+        StringBuilder sb =
                 new StringBuilder(getTypeName()).append(' ').append(super.toString());
         sb.append(" frame:");
         if (_header.iFrameNumber == 0xFFFF)
@@ -129,6 +129,7 @@ public class SectorAliceNullVideo extends IdentifiedSector {
         return (_header.iFrameNumber & 0x8000) != 0;
     }
 
+    @Override
     public @Nonnull String getTypeName() {
         return "AliceNull";
     }

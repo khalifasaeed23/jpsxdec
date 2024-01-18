@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2015-2019  Michael Sabin
+ * Copyright (C) 2015-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -41,36 +41,40 @@ import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 import jpsxdec.i18n.exception.LoggedFailure;
 import jpsxdec.i18n.log.ILocalizedLogger;
+import jpsxdec.modules.SectorRange;
 
-/** Collects Ace Combat 3 sectors and generates frames. 
+/** Collects Ace Combat 3 sectors and generates frames.
  * Ace Combat 3 demuxers need to only demux for a given channel.
  * To demux for another channel, create a separate demuxer. */
-public class SectorAc3VideoToDemuxedAc3Frame implements SectorClaimToSectorAc3Video.Listener {
+public class SectorAc3VideoToDemuxedAc3Frame {
 
-    public static interface Listener {
+    public interface Listener {
         void frameComplete(@Nonnull DemuxedAc3Frame frame, @Nonnull ILocalizedLogger log)
                 throws LoggedFailure;
     }
 
     private final int _iChannel;
+    @Nonnull
+    private final SectorRange _sectorRange;
+
     @CheckForNull
     private Ac3Demuxer _currentFrame;
     @CheckForNull
     private Listener _listener;
 
-    public SectorAc3VideoToDemuxedAc3Frame(int iChannel) {
-        _iChannel = iChannel;
+    public SectorAc3VideoToDemuxedAc3Frame(int iChannel, @Nonnull SectorRange sectorRange) {
+        this(iChannel, sectorRange, null);
     }
-    public SectorAc3VideoToDemuxedAc3Frame(int iChannel, @Nonnull Listener listener) {
-        this(iChannel);
+    public SectorAc3VideoToDemuxedAc3Frame(int iChannel, @Nonnull SectorRange sectorRange, @Nonnull Listener listener) {
+        _iChannel = iChannel;
+        _sectorRange = sectorRange;
         _listener = listener;
     }
     public void setListener(@CheckForNull Listener listener) {
         _listener = listener;
     }
 
-
-    public @Nonnull Ac3AddResult feedSector(@Nonnull SectorAceCombat3Video vidSector, 
+    public @Nonnull Ac3AddResult feedSector(@Nonnull SectorAceCombat3Video vidSector,
                                             @Nonnull ILocalizedLogger log)
             throws LoggedFailure
     {
@@ -85,10 +89,16 @@ public class SectorAc3VideoToDemuxedAc3Frame implements SectorClaimToSectorAc3Vi
             //      and different channel (although the code above should prevent
             //      the different channel condition)
         }
-        if (_currentFrame == null)
-            _currentFrame = new Ac3Demuxer(vidSector, log);
-        if (_currentFrame.isFrameComplete())
+
+        if (_sectorRange.sectorIsInRange(vidSector.getSectorNumber())) {
+            if (_currentFrame == null)
+                _currentFrame = new Ac3Demuxer(vidSector, log);
+            if (_currentFrame.isFrameComplete())
+                endOfSectors(log);
+        } else {
             endOfSectors(log);
+        }
+
         return Ac3AddResult.Same;
     }
 
@@ -99,7 +109,5 @@ public class SectorAc3VideoToDemuxedAc3Frame implements SectorClaimToSectorAc3Vi
             _listener.frameComplete(_currentFrame.finishFrame(log), log);
         _currentFrame = null;
     }
-
-
 }
 

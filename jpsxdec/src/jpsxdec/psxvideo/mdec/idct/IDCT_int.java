@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -39,7 +39,7 @@ package jpsxdec.psxvideo.mdec.idct;
 
 /** Interface for all int-precision Inverse Discrete Cosine Transform classes. */
 public interface IDCT_int {
-    
+
     /** Standard Inverse Discrete Cosine Transform that processes all coefficients. */
     void IDCT(int[] aiIdctMatrix,
               int iOutputOffset, int[] aiOutput);

@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -37,11 +37,10 @@
 
 package jpsxdec;
 
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.logging.Level;
+import java.util.logging.LogManager;
 import java.util.logging.Logger;
 import javax.annotation.Nonnull;
 import jpsxdec.cmdline.CommandLine;
@@ -54,43 +53,23 @@ public class Main {
     private static final Logger LOG = Logger.getLogger(Main.class.getName());
 
 
-    private static boolean loadLoggerConfigFromSystemProperty() {
+    /** @see LogManager */
+    private static boolean isLoggerConfiguredFromProperty() {
         String sLogConfigFile = System.getProperty("java.util.logging.config.file");
-        if (sLogConfigFile == null)
-            return false;
+        if (sLogConfigFile != null)
+            return true;
+        String sLogConfigClass = System.getProperty("java.util.logging.config.class");
+        if (sLogConfigClass != null)
+            return true;
 
-        FileInputStream fis;
-        try {
-            fis = new FileInputStream(sLogConfigFile);
-        } catch (FileNotFoundException ex) {
-            ex.printStackTrace();
-            return false;
-        }
-
-        boolean blnSuccess = false;
-
-        try {
-            java.util.logging.LogManager.getLogManager().readConfiguration(fis);
-            blnSuccess = true;
-        } catch (Exception ex) {
-            ex.printStackTrace();
-            blnSuccess = false;
-        } finally {
-            try {
-                fis.close();
-            } catch (IOException ex1) {
-                ex1.printStackTrace();
-                blnSuccess = false;
-            }
-        }
-        return blnSuccess;
+        return false;
     }
 
     public static void loadDefaultLogger() {
         loadLoggerConfigResource(Main.class, "LogToFile.properties");
     }
 
-    public static void loadLoggerConfigResource(@Nonnull Class referenceClass,
+    public static void loadLoggerConfigResource(@Nonnull Class<?> referenceClass,
                                                 @Nonnull String sLogFileResource)
     {
         InputStream is = referenceClass.getResourceAsStream(sLogFileResource);
@@ -107,7 +86,7 @@ public class Main {
 
     /** Main entry point to the jPSXdec program. */
     public static void main(final String[] asArgs) {
-        if (!loadLoggerConfigFromSystemProperty())
+        if (!isLoggerConfiguredFromProperty())
             loadDefaultLogger();
 
         ArgParser ap = new ArgParser(asArgs);
@@ -117,10 +96,11 @@ public class Main {
             blnShowGui = true;
         } else if (asArgs.length == 1) {
             blnShowGui = !ap.hasHelp();
-        } 
-        
+        }
+
         if (blnShowGui) {
             java.awt.EventQueue.invokeLater(new Runnable() {
+                @Override
                 public void run() {
                     Gui gui = new Gui();
                     if (asArgs.length > 0)

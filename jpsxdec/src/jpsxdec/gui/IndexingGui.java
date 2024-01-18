@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -48,14 +48,14 @@ import java.util.logging.Logger;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 import javax.swing.JOptionPane;
-import jpsxdec.cdreaders.CdFileSectorReader;
+import javax.swing.SwingWorker;
+import jpsxdec.cdreaders.ICdSectorReader;
 import jpsxdec.i18n.I;
 import jpsxdec.i18n.ILocalizedMessage;
 import jpsxdec.i18n.log.ProgressLogger;
 import jpsxdec.i18n.log.UserFriendlyLogger;
 import jpsxdec.indexing.DiscIndex;
 import jpsxdec.util.TaskCanceledException;
-import org.jdesktop.swingworker.SwingWorker;
 
 
 public class IndexingGui extends javax.swing.JDialog implements PropertyChangeListener {
@@ -64,7 +64,7 @@ public class IndexingGui extends javax.swing.JDialog implements PropertyChangeLi
 
     /** The task to perform. */
     @Nonnull
-    private ProgresGuiTask _task;
+    private ProgressGuiTask _task;
     /** Holds any exception thrown by the task. */
     @CheckForNull
     private Throwable _exception;
@@ -75,7 +75,7 @@ public class IndexingGui extends javax.swing.JDialog implements PropertyChangeLi
     @CheckForNull
     public DiscIndex _index;
     @Nonnull
-    public CdFileSectorReader _cd;
+    public ICdSectorReader _cd;
 
     @Nonnull
     private State _eState = State.NOT_STARTED;
@@ -90,18 +90,18 @@ public class IndexingGui extends javax.swing.JDialog implements PropertyChangeLi
 
 
     /** Creates new form Progress */
-    public IndexingGui(@Nonnull java.awt.Dialog parent, @Nonnull CdFileSectorReader cd) {
+    public IndexingGui(@Nonnull java.awt.Dialog parent, @Nonnull ICdSectorReader cd) {
         super(parent, true);
         sharedConstructor(parent, cd);
     }
 
     /** Creates new form Progress */
-    public IndexingGui(@Nonnull java.awt.Frame parent, @Nonnull CdFileSectorReader cd) {
+    public IndexingGui(@Nonnull java.awt.Frame parent, @Nonnull ICdSectorReader cd) {
         super(parent, true);
         sharedConstructor(parent, cd);
     }
 
-    private void sharedConstructor(@Nonnull java.awt.Window parent, @Nonnull CdFileSectorReader cd)
+    private void sharedConstructor(@Nonnull java.awt.Window parent, @Nonnull ICdSectorReader cd)
     {
         initComponents();
 
@@ -115,27 +115,28 @@ public class IndexingGui extends javax.swing.JDialog implements PropertyChangeLi
         _guiItemName.setText(cd.getSourceFile().getPath());
         _guiResultLbl.setText("");
 
-        _task = new ProgresGuiTask();
+        _task = new ProgressGuiTask();
         _task.addPropertyChangeListener(this);
         _guiCancelBtnActionPerformed(null);
     }
 
 
 
+    @Override
     public void propertyChange(@Nonnull PropertyChangeEvent evt) {
         // update the progress bar
-        if (ProgresGuiTask.PROGRESS_VALUE.equals(evt.getPropertyName())) {
+        if (ProgressGuiTask.PROGRESS_VALUE.equals(evt.getPropertyName())) {
             _guiProgress.setValue((Integer)evt.getNewValue());
-        } else if (ProgresGuiTask.EXCEPTION.equals(evt.getPropertyName()) ) {
+        } else if (ProgressGuiTask.EXCEPTION.equals(evt.getPropertyName()) ) {
             // fatal/unhandled exception
             // we know getNewValue() != null since we created the event
             _exception = (Throwable)evt.getNewValue();
             _exception.printStackTrace(System.err); // debug
-            JOptionPane.showMessageDialog(this, _exception.toString(), 
+            JOptionPane.showMessageDialog(this, _exception.toString(),
                     I.GUI_INDEX_EXCEPTION_DIALOG_TITLE().getLocalizedMessage(),
                     JOptionPane.ERROR_MESSAGE);
             taskComplete();
-        } else if (ProgresGuiTask.DONE.equals(evt.getPropertyName()) ) {
+        } else if (ProgressGuiTask.DONE.equals(evt.getPropertyName()) ) {
             taskComplete();
         }
     }
@@ -347,7 +348,7 @@ public class IndexingGui extends javax.swing.JDialog implements PropertyChangeLi
 
     // run in separate thread
 
-    private class ProgresGuiTask extends SwingWorker<Void, ILocalizedMessage> 
+    private class ProgressGuiTask extends SwingWorker<Void, ILocalizedMessage>
         implements UserFriendlyLogger.OnWarnErr
     {
 
@@ -356,40 +357,47 @@ public class IndexingGui extends javax.swing.JDialog implements PropertyChangeLi
         public static final String DONE = "done";
 
         private final ProgressLogger __progressLog = new ProgressLogger("index") {
+            @Override
             protected void handleProgressStart() throws TaskCanceledException {
                 if (isCancelled())
                     throw new TaskCanceledException();
                 setProgress(0);
             }
 
+            @Override
             protected void handleProgressEnd() throws TaskCanceledException {
                 setProgress(100);
             }
 
+            @Override
             protected void handleProgressUpdate(double dblPercentComplete) throws TaskCanceledException {
                 if (isCancelled())
                     throw new TaskCanceledException();
                 setProgress((int)Math.round(dblPercentComplete * 100));
             }
 
+            @Override
             public void event(@Nonnull ILocalizedMessage msg) {
                 publish(msg);
             }
 
+            @Override
             public boolean isSeekingEvent() {
                 // TODO: only seek event after so many seconds
                 return true;
             }
         };
 
-        public ProgresGuiTask() {
+        public ProgressGuiTask() {
             __progressLog.setListener(this);
             __progressLog.log(Level.INFO, I.CMD_GUI_INDEXING(_cd.toString()));
         }
 
+        @Override
         public void onWarn(@Nonnull ILocalizedMessage msg) {
             EventQueue.invokeLater(new ExceptionLater(true));
         }
+        @Override
         public void onErr(@Nonnull ILocalizedMessage msg) {
             EventQueue.invokeLater(new ExceptionLater(false));
         }
@@ -424,6 +432,7 @@ public class IndexingGui extends javax.swing.JDialog implements PropertyChangeLi
             public ExceptionLater(boolean blnWarn) {
                 __blnWarn = blnWarn;
             }
+            @Override
             public void run() {
                 if (__blnWarn) {
                     _iWarningCount++;

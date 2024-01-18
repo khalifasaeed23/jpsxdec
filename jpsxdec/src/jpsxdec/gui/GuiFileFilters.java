@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -47,12 +47,15 @@ import jpsxdec.i18n.I;
 public class GuiFileFilters {
 
     public static final SaveFileFilter INDEX_FILE_FILTER = new SaveFileFilter() {
+        @Override
         public boolean accept(@Nonnull File f) {
-            return f.isFile() ? f.getName().toLowerCase().endsWith(getExtension().toLowerCase()) : true;
+            return !f.isFile() || f.getName().toLowerCase().endsWith(getExtension().toLowerCase());
         }
+        @Override
         public @Nonnull String getDescription() {
             return I.GUI_INDEX_EXTENSION().getLocalizedMessage();
         }
+        @Override
         public @Nonnull String getExtension() {
             return ".idx";
         }
@@ -61,7 +64,9 @@ public class GuiFileFilters {
 
     static final FileFilter[] DISC_OPEN_FILTERS = {
         new FileFilter() {
+            @Override
             public String getDescription() { return I.GUI_ALL_COMPATIBLE_EXTENSIONS().getLocalizedMessage(); }
+            @Override
             public boolean accept(File f) {
                 String s = f.getName().toLowerCase();
                 return f.isDirectory() ||
@@ -75,7 +80,9 @@ public class GuiFileFilters {
             }
         },
         new FileFilter() {
+            @Override
             public String getDescription() { return I.GUI_CD_IMAGE_EXTENSIONS().getLocalizedMessage(); }
+            @Override
             public boolean accept(File f) {
                 String s = f.getName().toLowerCase();
                 return f.isDirectory() ||
@@ -86,7 +93,9 @@ public class GuiFileFilters {
             }
         },
         new FileFilter() {
+            @Override
             public String getDescription() { return I.GUI_PSX_VIDEO_EXTENSIONS().getLocalizedMessage(); }
+            @Override
             public boolean accept(File f) {
                 String s = f.getName().toLowerCase();
                 return f.isDirectory() ||
@@ -97,7 +106,9 @@ public class GuiFileFilters {
             }
         },
         new FileFilter() {
+            @Override
             public String getDescription() { return I.GUI_XA_EXTENSION().getLocalizedMessage(); }
+            @Override
             public boolean accept(File f) {
                 String s = f.getName().toLowerCase();
                 return f.isDirectory() ||

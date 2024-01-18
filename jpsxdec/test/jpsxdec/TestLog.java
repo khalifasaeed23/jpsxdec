@@ -1,8 +1,6 @@
-package jpsxdec;
-
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2018-2019  Michael Sabin
+ * Copyright (C) 2018-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -37,13 +35,14 @@ package jpsxdec;
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+package jpsxdec;
+
 import java.io.IOException;
-import jpsxdec.Main;
 import jpsxdec.i18n.log.DebugFormatter;
-import jpsxdec.util.IO;
 import jpsxdec.util.Misc;
 import static org.junit.Assert.assertTrue;
 import org.junit.Test;
+import testutil.Util;
 
 
 public class TestLog {
@@ -51,6 +50,6 @@ public class TestLog {
     @Test
     public void makeSureTheDebugFormatterIsBeingUsed() throws IOException {
         // because I keep messing it up
-        assertTrue(Misc.asciiToString(IO.readEntireStream(Main.class.getResourceAsStream("LogToFile.properties"))).contains(DebugFormatter.class.getCanonicalName()));
+        assertTrue(Misc.asciiToString(Util.readResource(Main.class, "LogToFile.properties")).contains(DebugFormatter.class.getCanonicalName()));
     }
 }

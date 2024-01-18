@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2013-2019  Michael Sabin
+ * Copyright (C) 2013-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -66,7 +66,7 @@ public class UserFriendlyLogger implements ILocalizedLogger, Closeable {
 
     /** Listener will be notified of any {@link Level#WARNING} or
      * {@link Level#SEVERE} (errors). */
-    public static interface OnWarnErr {
+    public interface OnWarnErr {
         void onWarn(@Nonnull ILocalizedMessage msg);
         void onErr(@Nonnull ILocalizedMessage msg);
     }
@@ -75,9 +75,11 @@ public class UserFriendlyLogger implements ILocalizedLogger, Closeable {
     public static class WarnErrCounter implements OnWarnErr {
         private int _iWarnCount = 0;
         private int _iErrCount = 0;
+        @Override
         public void onWarn(@Nonnull ILocalizedMessage msg) {
             _iWarnCount++;
         }
+        @Override
         public void onErr(@Nonnull ILocalizedMessage msg) {
             _iErrCount++;
         }
@@ -136,10 +138,12 @@ public class UserFriendlyLogger implements ILocalizedLogger, Closeable {
         }
     }
 
-    public void log(Level level, @Nonnull ILocalizedMessage msg) {
+    @Override
+    public void log(@Nonnull Level level, @Nonnull ILocalizedMessage msg) {
         log(level, msg, null);
     }
-    public void log(Level level, @Nonnull ILocalizedMessage msg, @CheckForNull Throwable debugException) {
+    @Override
+    public void log(@Nonnull Level level, @Nonnull ILocalizedMessage msg, @CheckForNull Throwable debugException) {
         msg.logEnglish(_javaLogger, level, debugException); // also log to normal logging
         if (_logStream == null)
             openOutputFile();
@@ -195,8 +199,9 @@ public class UserFriendlyLogger implements ILocalizedLogger, Closeable {
         ps.println(_dateFormat.format(Calendar.getInstance().getTime()));
     }
 
+    @Override
     public void close() {
-        if (_file != null)
+        if (_file != null) // only close the stream if it's pointing to a file (don't close stdout/stderr)
             _logStream.close();
     }
 

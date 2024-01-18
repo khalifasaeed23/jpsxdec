@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -92,6 +92,7 @@ class TimSaverBuilderGui extends DiscItemSaverBuilderGui implements ChangeListen
         return blnOk;
     }
 
+    @Override
     public void stateChanged(@CheckForNull ChangeEvent e) {
         for (Component c : _panelImages.getComponents()) {
             if (c instanceof TimPaletteSelector)
@@ -122,6 +123,7 @@ class TimSaverBuilderGui extends DiscItemSaverBuilderGui implements ChangeListen
                 add(new JLabel(I.GUI_SAVE_AS_LABEL().getLocalizedMessage()), ParagraphLayout.NEW_PARAGRAPH);
                 add(p, ParagraphLayout.STRETCH_H);
             }
+            @Override
             public void stateChanged(ChangeEvent e) {
                 updateText();
             }
@@ -130,22 +132,27 @@ class TimSaverBuilderGui extends DiscItemSaverBuilderGui implements ChangeListen
             }
         }
 
-        private class Format extends AbstractCombo {
+        private class Format extends AbstractCombo<TimSaverBuilder.TimSaveFormat> {
             public Format() {
                 super(I.GUI_TIM_SAVE_FORMAT_LABEL(), true);
             }
+            @Override
             public int getSize() {
                 return _bl.getBuilder().getImageFormat_listSize();
             }
-            public Object getElementAt(int index) {
+            @Override
+            public TimSaverBuilder.TimSaveFormat getElementAt(int index) {
                 return _bl.getBuilder().getImageFormat_listItem(index);
             }
+            @Override
             public void setSelectedItem(Object anItem) {
                 _bl.getBuilder().setImageFormat((TimSaverBuilder.TimSaveFormat) anItem);
             }
+            @Override
             public Object getSelectedItem() {
                 return _bl.getBuilder().getImageFormat();
             }
+            @Override
             protected boolean getEnabled() {return true; }
         }
     }
@@ -156,7 +163,7 @@ class TimSaverBuilderGui extends DiscItemSaverBuilderGui implements ChangeListen
 
         try {
             // XXX: I don't like having to read from the disc until saving actually begins
-            // or the user explicitly choses to preview the item
+            // or the user explicitly chooses to preview the item
             Tim tim = _bl.getBuilder().readTim();
             int iPals = tim.getPaletteCount();
 

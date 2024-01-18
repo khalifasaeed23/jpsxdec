@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2019  Michael Sabin
+ * Copyright (C) 2019-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -44,7 +44,9 @@ import javax.annotation.Nonnull;
 import jpsxdec.cdreaders.CdSector;
 import jpsxdec.modules.IdentifiedSector;
 
-/** Just a simple sector wrapper for Policenauts to claim sectors. */
+/** Just a simple sector wrapper for Policenauts to claim sectors.
+ * Holds the packets that end in this sector, and a flag if it's the last sector
+ * of the video. */
 public class SectorPolicenauts extends IdentifiedSector implements Iterable<SPacketData> {
 
     private boolean _blnIsEnd;

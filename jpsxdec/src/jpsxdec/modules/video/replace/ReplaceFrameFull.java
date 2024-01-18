@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -43,19 +43,20 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 import javax.imageio.ImageIO;
-import jpsxdec.cdreaders.CdFileSectorReader;
+import jpsxdec.cdreaders.DiscPatcher;
 import jpsxdec.i18n.I;
 import jpsxdec.i18n.exception.LocalizedDeserializationFail;
 import jpsxdec.i18n.exception.LoggedFailure;
 import jpsxdec.i18n.log.ILocalizedLogger;
-import jpsxdec.modules.video.IDemuxedFrame;
+import jpsxdec.modules.aconcagua.BitStreamUncompressor_Aconcagua;
 import jpsxdec.modules.video.framenumber.FrameLookup;
-import jpsxdec.psxvideo.bitstreams.BitStreamCompressor;
-import jpsxdec.psxvideo.bitstreams.BitStreamUncompressor;
+import jpsxdec.modules.video.sectorbased.ISectorBasedDemuxedFrame;
+import jpsxdec.modules.video.sectorbased.SectorBasedFrameAnalysis;
+import jpsxdec.psxvideo.bitstreams.BitStreamAnalysis;
+import jpsxdec.psxvideo.bitstreams.IBitStreamUncompressor;
 import jpsxdec.psxvideo.encode.MdecEncoder;
 import jpsxdec.psxvideo.encode.PsxYCbCrImage;
 import jpsxdec.psxvideo.mdec.Calc;
@@ -69,14 +70,14 @@ import org.w3c.dom.Element;
 
 public class ReplaceFrameFull {
 
-    private static final Logger LOG = Logger.getLogger(ReplaceFrameFull.class.getName());
-    
     @Nonnull
     private final FrameLookup _frameNum;
     @Nonnull
     private final File _imageFile;
     @CheckForNull
     private ImageFormat _format;
+    @CheckForNull
+    private SizeLimit _sizeLimit;
 
     public static final String XML_TAG_NAME = "replace";
 
@@ -97,9 +98,34 @@ public class ReplaceFrameFull {
         }
     }
 
+    public enum SizeLimit {
+        ORIGINAL_NON_ZERO_SIZE("original non-zero");
+
+        @Nonnull
+        private final String _sXmlValue;
+
+        private SizeLimit(String sXmlValue) {
+            _sXmlValue = sXmlValue;
+        }
+
+        public static @CheckForNull SizeLimit deserialize(@CheckForNull String sSize) throws LocalizedDeserializationFail {
+            if (sSize == null || sSize.length() == 0)
+                return null;
+            for (SizeLimit value : values()) {
+                if (value._sXmlValue.equals(sSize))
+                    return value;
+            }
+            throw new LocalizedDeserializationFail(I.REPLACE_XML_INVALID_SIZE_LIMIT(sSize, ORIGINAL_NON_ZERO_SIZE._sXmlValue));
+        }
+        public @Nonnull String serialize() {
+            return _sXmlValue;
+        }
+    }
+
     public ReplaceFrameFull(@Nonnull Element element) throws LocalizedDeserializationFail {
         this(element.getAttribute("frame").trim(), element.getFirstChild().getNodeValue().trim());
         setFormat(ImageFormat.deserialize(element.getAttribute("format")));
+        setSizeLimit(SizeLimit.deserialize(element.getAttribute("size-limit")));
     }
     public @Nonnull Element serialize(@Nonnull Document document) {
         Element node = document.createElement(XML_TAG_NAME);
@@ -141,23 +167,23 @@ public class ReplaceFrameFull {
         _format = format;
     }
 
-    public void replace(@Nonnull IDemuxedFrame frame, @Nonnull CdFileSectorReader cd,
+    final public @CheckForNull SizeLimit getSizeLimit() {
+        return _sizeLimit;
+    }
+
+    final public void setSizeLimit(@CheckForNull SizeLimit sizeLimit) {
+        _sizeLimit = sizeLimit;
+    }
+
+    public void replace(@Nonnull ISectorBasedDemuxedFrame frame, @Nonnull DiscPatcher patcher,
                         @Nonnull ILocalizedLogger log)
             throws LoggedFailure
     {
-        // identify existing frame bs format
-        byte[] abExistingFrame = frame.copyDemuxData();
-        BitStreamUncompressor bsu;
+        SectorBasedFrameAnalysis existingFrame;
         try {
-            bsu = BitStreamUncompressor.identifyUncompressor(abExistingFrame);
+            existingFrame = SectorBasedFrameAnalysis.create(frame);
         } catch (BinaryDataNotRecognized ex) {
             throw new LoggedFailure(log, Level.SEVERE, I.UNABLE_TO_DETERMINE_FRAME_TYPE_FRM(getFrameLookup().toString()), ex);
-        }
-
-        try {
-            // parse through the existing bitstream to ensure it is good
-            // and to collect information about it
-            bsu.skipMacroBlocks(frame.getWidth(), frame.getHeight());
         } catch (MdecException.EndOfStream ex) {
             // existing frame is incomplete
             throw new LoggedFailure(log, Level.SEVERE, I.FRAME_NUM_INCOMPLETE(getFrameLookup().toString()), ex);
@@ -165,51 +191,50 @@ public class ReplaceFrameFull {
             // existing frame is corrupted
             throw new LoggedFailure(log, Level.SEVERE, I.FRAME_NUM_CORRUPTED(getFrameLookup().toString()), ex);
         }
+
         byte[] abNewFrame;
+        int iMaxSize;
+        if (_sizeLimit == SizeLimit.ORIGINAL_NON_ZERO_SIZE)
+            iMaxSize = existingFrame.calculateNonZeroBytes();
+        else
+            iMaxSize = existingFrame.getBitStreamArrayLength();
 
         if (_format == ImageFormat.BS) {
             abNewFrame = readBitstreamFile(_imageFile, log);
         } else {
-            BitStreamCompressor compressor = bsu.makeCompressor();
             if (_format == ImageFormat.MDEC) {
                 abNewFrame = readMdecAndCompress(_imageFile, getFrameLookup(),
-                                                 compressor, log);
+                                                 existingFrame, log);
             } else {
-                abNewFrame = readJavaImage(_imageFile, getFrameLookup(),
-                                           frame.getWidth(), frame.getHeight(),
-                                           abExistingFrame, compressor, log);
+                abNewFrame = encodeJavaImage(_imageFile, getFrameLookup(), existingFrame, iMaxSize, log);
             }
         }
 
         if (abNewFrame == null)
             throw new LoggedFailure(log, Level.SEVERE, I.CMD_UNABLE_TO_COMPRESS_FRAME_SMALL_ENOUGH(
-                    getFrameLookup().toString(), frame.getDemuxSize()));
+                    getFrameLookup().toString(), iMaxSize));
         else if (abNewFrame.length > frame.getDemuxSize()) // for bs or mdec formats
             throw new LoggedFailure(log, Level.SEVERE, I.NEW_FRAME_DOES_NOT_FIT(
                     getFrameLookup().toString(), abNewFrame.length, frame.getDemuxSize()));
 
-        // find out how many bytes and mdec codes are used by the new frame
-        BitStreamUncompressor verifiedBsu;
+        BitStreamAnalysis newFrame;
         try {
-            verifiedBsu = BitStreamUncompressor.identifyUncompressor(abNewFrame);
-            // also verify it is the same bitstream type (for bs format)
-            if (!verifiedBsu.getClass().equals(bsu.getClass()))
+            IBitStreamUncompressor origBs = existingFrame.getCompletedBitStream();
+            if (origBs instanceof BitStreamUncompressor_Aconcagua) {
+                newFrame = new BitStreamAnalysis(abNewFrame, (((BitStreamUncompressor_Aconcagua) origBs).makeFor(abNewFrame)), frame.getWidth(), frame.getHeight());
+            } else {
+                newFrame = new BitStreamAnalysis(abNewFrame, frame.getWidth(), frame.getHeight());
+            }
+            // verify it is the same bitstream type when the image is bs format
+            if (!newFrame.isBitStreamClass(existingFrame.getBitStreamClass()))
                 throw new BinaryDataNotRecognized();
         } catch (BinaryDataNotRecognized ex) {
             throw new LoggedFailure(log, Level.SEVERE, I.REPLACE_BITSTREAM_MISMATCH(_imageFile), ex);
-        }
-
-        try {
-            verifiedBsu.skipMacroBlocks(frame.getWidth(), frame.getHeight());
-            verifiedBsu.skipPaddingBits();
-        } catch (MdecException.EndOfStream ex) {
-            throw new RuntimeException("Can't decode a frame we just encoded?", ex);
-        } catch (MdecException.ReadCorruption ex) {
+        } catch (MdecException.EndOfStream | MdecException.ReadCorruption ex) {
             throw new RuntimeException("Can't decode a frame we just encoded?", ex);
         }
 
-        int iUsedSize = ((verifiedBsu.getBitPosition() + 15) / 16) * 2; // rounded up to nearest word
-        frame.writeToSectors(abNewFrame, iUsedSize, verifiedBsu.getReadMdecCodeCount(), cd, log);
+        frame.writeToSectors(existingFrame, newFrame, patcher, log);
     }
 
     private static byte[] readBitstreamFile(@Nonnull File imageFile, @Nonnull ILocalizedLogger log)
@@ -224,21 +249,20 @@ public class ReplaceFrameFull {
         }
     }
 
-    private static byte[] readMdecAndCompress(@Nonnull File mdecImageFile, @Nonnull FrameLookup frameNum,
-                                   @Nonnull BitStreamCompressor compressor,
-                                   @Nonnull ILocalizedLogger log)
+    private static byte[] readMdecAndCompress(@Nonnull File mdecImageFile,
+                                              @Nonnull FrameLookup frameNum,
+                                              @Nonnull SectorBasedFrameAnalysis frameAnalysis,
+                                              @Nonnull ILocalizedLogger log)
             throws LoggedFailure
     {
         try {
             MdecInputStreamReader mdecIn = new MdecInputStreamReader(IO.readFile(mdecImageFile));
-            return compressor.compress(mdecIn);
+            return frameAnalysis.makeBitStreamCompressor().compress(mdecIn);
         } catch (FileNotFoundException ex) {
             throw new LoggedFailure(log, Level.SEVERE, I.IO_OPENING_FILE_NOT_FOUND_NAME(mdecImageFile.toString()), ex);
         } catch (IOException ex) {
             throw new LoggedFailure(log, Level.SEVERE, I.IO_READING_FILE_ERROR_NAME(mdecImageFile.toString()), ex);
-        } catch (IncompatibleException ex) {
-            throw new LoggedFailure(log, Level.SEVERE, I.REPLACE_INCOMPATIBLE_MDEC(mdecImageFile.toString(), frameNum.toString()), ex);
-        } catch (MdecException.TooMuchEnergy ex) {
+        } catch (IncompatibleException | MdecException.TooMuchEnergy ex) {
             throw new LoggedFailure(log, Level.SEVERE, I.REPLACE_INCOMPATIBLE_MDEC(mdecImageFile.toString(), frameNum.toString()), ex);
         } catch (MdecException.EndOfStream ex) {
             throw new LoggedFailure(log, Level.SEVERE, I.REPLACE_INCOMPLETE_MDEC(mdecImageFile.toString(), frameNum.toString()), ex);
@@ -247,11 +271,11 @@ public class ReplaceFrameFull {
         }
     }
 
-    private static byte[] readJavaImage(@Nonnull File imageFile, @Nonnull FrameLookup frameNum,
-                                        int iWidth, int iHeight,
-                                        byte[] abExistingFrame,
-                                        @Nonnull BitStreamCompressor compressor,
-                                        @Nonnull ILocalizedLogger log)
+    private static @CheckForNull byte[] encodeJavaImage(@Nonnull File imageFile,
+                                                        @Nonnull FrameLookup frameNum,
+                                                        @Nonnull SectorBasedFrameAnalysis frameAnalysis,
+                                                        int iMaxSize,
+                                                        @Nonnull ILocalizedLogger log)
             throws LoggedFailure
     {
         BufferedImage bi;
@@ -261,22 +285,20 @@ public class ReplaceFrameFull {
         if (bi == null)
             throw new LoggedFailure(log, Level.SEVERE, I.REPLACE_FILE_NOT_JAVA_IMAGE(imageFile));
 
-        if (bi.getWidth()  != Calc.fullDimension(iWidth) ||
-            bi.getHeight() != Calc.fullDimension(iHeight))
+        if (bi.getWidth()  != Calc.fullDimension(frameAnalysis.getWidth()) ||
+            bi.getHeight() != Calc.fullDimension(frameAnalysis.getHeight()))
             throw new LoggedFailure(log, Level.SEVERE,
                     I.REPLACE_FRAME_DIMENSIONS_MISMATCH(imageFile.toString(),
-                    bi.getWidth(), bi.getHeight(), iWidth, iHeight));
+                    bi.getWidth(), bi.getHeight(), frameAnalysis.getWidth(), frameAnalysis.getHeight()));
 
         PsxYCbCrImage psxImage = new PsxYCbCrImage(bi);
-        MdecEncoder encoder = new MdecEncoder(psxImage, iWidth, iHeight);
+        MdecEncoder encoder = new MdecEncoder(psxImage, frameAnalysis.getWidth(), frameAnalysis.getHeight());
         try {
-            return compressor.compressFull(abExistingFrame, frameNum.toString(), encoder, log);
-        } catch (MdecException.EndOfStream ex) {
-            // existing frame is incomplete
-            throw new LoggedFailure(log, Level.SEVERE, I.FRAME_NUM_INCOMPLETE(frameNum.toString()), ex);
-        } catch (MdecException.ReadCorruption ex) {
-            // existing frame is corrupted
-            throw new LoggedFailure(log, Level.SEVERE, I.FRAME_NUM_CORRUPTED(frameNum.toString()), ex);
+            return frameAnalysis.makeBitStreamCompressor().compressFull(iMaxSize, frameNum.toString(), encoder, log);
+        } catch (MdecException.EndOfStream | MdecException.ReadCorruption ex) {
+            throw new RuntimeException("We made the MdecEncoder, this shouldn't happen", ex);
+        } catch (IncompatibleException ex) {
+            throw new RuntimeException("The compressor was created from the uncompressor, so this should never happen", ex);
         }
     }
 }

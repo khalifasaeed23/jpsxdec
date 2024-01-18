@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2014-2019  Michael Sabin
+ * Copyright (C) 2014-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -37,29 +37,26 @@
 
 package jpsxdec.modules.ac3;
 
-import java.io.PrintStream;
 import java.util.Arrays;
 import java.util.List;
-import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
-import jpsxdec.cdreaders.CdFileSectorReader;
+import jpsxdec.cdreaders.ICdSectorReader;
+import jpsxdec.discitems.Dimensions;
 import jpsxdec.discitems.DiscItem;
 import jpsxdec.discitems.SerializedDiscItem;
 import jpsxdec.i18n.exception.LocalizedDeserializationFail;
 import jpsxdec.i18n.exception.LoggedFailure;
-import jpsxdec.i18n.log.DebugLogger;
 import jpsxdec.i18n.log.ILocalizedLogger;
-import jpsxdec.modules.IIdentifiedSector;
+import jpsxdec.modules.IdentifiedSectorListener;
 import jpsxdec.modules.SectorClaimSystem;
-import jpsxdec.modules.video.Dimensions;
-import jpsxdec.modules.video.IDemuxedFrame;
-import jpsxdec.modules.video.ISectorClaimToDemuxedFrame;
+import jpsxdec.modules.SectorRange;
 import jpsxdec.modules.video.framenumber.FrameNumber;
 import jpsxdec.modules.video.framenumber.HeaderFrameNumber;
 import jpsxdec.modules.video.framenumber.IFrameNumberFormatterWithHeader;
 import jpsxdec.modules.video.framenumber.IndexSectorFrameNumber;
 import jpsxdec.modules.video.sectorbased.DiscItemSectorBasedVideoStream;
 import jpsxdec.modules.video.sectorbased.SectorBasedVideoInfo;
+import jpsxdec.modules.video.sectorbased.SectorClaimToSectorBasedDemuxedFrame;
 import jpsxdec.modules.xa.DiscItemXaAudioStream;
 
 public class DiscItemAceCombat3VideoStream extends DiscItemSectorBasedVideoStream {
@@ -75,7 +72,7 @@ public class DiscItemAceCombat3VideoStream extends DiscItemSectorBasedVideoStrea
     private static final String CHANNEL_KEY = "Channel";
     private final int _iChannel;
 
-    public DiscItemAceCombat3VideoStream(@Nonnull CdFileSectorReader cd,
+    public DiscItemAceCombat3VideoStream(@Nonnull ICdSectorReader cd,
                                          int iStartSector, int iEndSector,
                                          @Nonnull Dimensions dim,
                                          @Nonnull IndexSectorFrameNumber.Format sectorIndexFrameNumberFormat,
@@ -89,7 +86,7 @@ public class DiscItemAceCombat3VideoStream extends DiscItemSectorBasedVideoStrea
         _iChannel = iChannel;
     }
 
-    public DiscItemAceCombat3VideoStream(@Nonnull CdFileSectorReader cd,
+    public DiscItemAceCombat3VideoStream(@Nonnull ICdSectorReader cd,
                                          @Nonnull SerializedDiscItem fields)
             throws LocalizedDeserializationFail
     {
@@ -155,7 +152,7 @@ public class DiscItemAceCombat3VideoStream extends DiscItemSectorBasedVideoStrea
     }
 
     @Override
-    public FrameNumber getEndFrame() {
+    public @Nonnull FrameNumber getEndFrame() {
         return _headerFrameNumberFormat.getEndFrame(_indexSectorFrameNumberFormat);
     }
 
@@ -165,75 +162,67 @@ public class DiscItemAceCombat3VideoStream extends DiscItemSectorBasedVideoStrea
     }
 
     @Override
-    public void fpsDump(@Nonnull PrintStream ps) throws CdFileSectorReader.CdReadException {
-        SectorClaimSystem it = createClaimSystem();
-        for (int iSector = 0; it.hasNext(); iSector++) {
-            IIdentifiedSector isect = it.next(DebugLogger.Log).getClaimer();
-            if (isect instanceof SectorAceCombat3Video) {
-                SectorAceCombat3Video vidSect = (SectorAceCombat3Video) isect;
-                ps.println(String.format("%-5d %-4d %d/%d",
-                                         iSector,
-                                         _iMaxInvFrame - vidSect.getInvertedFrameNumber(),
-                                         vidSect.getChunkNumber(),
-                                         vidSect.getChunksInFrame() ));
-            } else {
-                ps.println(String.format(
-                        "%-5d X",
-                        iSector));
-            }
-
-        }
-    }
-
-    @Override
-    public @Nonnull ISectorClaimToDemuxedFrame makeDemuxer() {
+    public @Nonnull SectorClaimToSectorBasedDemuxedFrame makeDemuxer() {
         return new Demuxer(_iMaxInvFrame,
                            _headerFrameNumberFormat.makeFormatter(_indexSectorFrameNumberFormat),
-                           _iChannel, getStartSector(), getEndSector());
+                           _iChannel, makeSectorRange());
     }
 
 
     /** Public facing (external) demuxer for Ace Combat 3.
-     * Wraps {@link Ac3Demuxer} and sets the {@link FrameNumber} for completed 
-     * frames before passing them onto the {@link IDemuxedFrame.Listener}. */
-    public static class Demuxer implements ISectorClaimToDemuxedFrame, SectorAc3VideoToDemuxedAc3Frame.Listener {
-
-        private final SectorAc3VideoToDemuxedAc3Frame _sv2f;
+     * Sets the {@link FrameNumber} for completed
+     * frames before passing them onto the listener. */
+    public static class Demuxer extends SectorClaimToSectorBasedDemuxedFrame
+                             implements IdentifiedSectorListener<SectorAceCombat3Video>,
+                                        SectorAc3VideoToDemuxedAc3Frame.Listener
+    {
         private final int _iEndFrameNumber;
         @Nonnull
         private final IFrameNumberFormatterWithHeader _frameNumberFormatter;
-        private final int _iStartSector, _iEndSectorInclusive;
-        @CheckForNull
-        private IDemuxedFrame.Listener _listener;
+        @Nonnull
+        private final SectorAc3VideoToDemuxedAc3Frame _sv2f;
 
         public Demuxer(int iEndFrameNumber,
                        @Nonnull IFrameNumberFormatterWithHeader frameNumberFormatter,
-                       int iChannel, int iStartSector, int iEndSectorInclusive)
+                       int iChannel, @Nonnull SectorRange sectorRange)
         {
-            _sv2f = new SectorAc3VideoToDemuxedAc3Frame(iChannel, this);
-            _frameNumberFormatter = frameNumberFormatter;
+            super(sectorRange);
             _iEndFrameNumber = iEndFrameNumber;
-            _iStartSector = iStartSector;
-            _iEndSectorInclusive = iEndSectorInclusive;
+            _frameNumberFormatter = frameNumberFormatter;
+            _sv2f = new SectorAc3VideoToDemuxedAc3Frame(iChannel, sectorRange, this);
         }
 
+        //----------------------------------------------------------------------
+
+        @Override
+        public @Nonnull Class<SectorAceCombat3Video> getListeningFor() {
+            return SectorAceCombat3Video.class;
+        }
+        @Override
+        public void feedSector(@Nonnull SectorAceCombat3Video idSector, @Nonnull ILocalizedLogger log) throws LoggedFailure {
+            _sv2f.feedSector(idSector, log);
+        }
+        @Override
+        public void endOfFeedSectors(@Nonnull ILocalizedLogger log) throws LoggedFailure {
+            _sv2f.endOfSectors(log);
+        }
+
+        //----------------------------------------------------------------------
+
+        @Override
         public void attachToSectorClaimer(@Nonnull SectorClaimSystem scs) {
-            SectorClaimToSectorAc3Video s2ac3s = scs.getClaimer(SectorClaimToSectorAc3Video.class);
-            s2ac3s.setListener(_sv2f);
-            s2ac3s.setRangeLimit(_iStartSector, _iEndSectorInclusive);
+            scs.addIdListener(this);
         }
 
-        public void setFrameListener(@Nonnull IDemuxedFrame.Listener listener) {
-            _listener = listener;
-        }
+        //----------------------------------------------------------------------
 
+        @Override
         public void frameComplete(@Nonnull DemuxedAc3Frame frame, @Nonnull ILocalizedLogger log) throws LoggedFailure {
             FrameNumber fn = _frameNumberFormatter.next(frame.getStartSector(),
                                                         _iEndFrameNumber - frame.getInvertedHeaderFrameNumber(),
                                                         log);
             frame.setFrame(fn);
-            if (_listener != null)
-                _listener.frameComplete(frame);
+            demuxedFrameComplete(frame);
         }
 
     }

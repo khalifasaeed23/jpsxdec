@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2013-2019  Michael Sabin
+ * Copyright (C) 2013-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -42,16 +42,18 @@ import java.io.PrintStream;
 import java.util.Map;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
-import jpsxdec.cdreaders.CdFileSectorReader;
-import jpsxdec.cdreaders.CdSector;
+import jpsxdec.cdreaders.CdException;
+import jpsxdec.cdreaders.ICdSectorReader;
 import jpsxdec.i18n.I;
 import jpsxdec.i18n.ILocalizedMessage;
+import jpsxdec.i18n.exception.LoggedFailure;
 import jpsxdec.i18n.log.DebugLogger;
+import jpsxdec.indexing.SectorTypeCounter;
 import jpsxdec.modules.IIdentifiedSector;
 import jpsxdec.modules.SectorClaimSystem;
 import jpsxdec.util.ArgParser;
 
-
+/** Handle {@code -sectordump} option. */
 class Command_SectorDump extends Command {
 
     @Nonnull
@@ -61,13 +63,15 @@ class Command_SectorDump extends Command {
         super("-sectordump");
     }
 
+    @Override
     protected @CheckForNull ILocalizedMessage validate(@Nonnull String s) {
         _sOutfile = s;
         return null;
     }
 
+    @Override
     public void execute(@Nonnull ArgParser ap) throws CommandLineException {
-        CdFileSectorReader cdReader = getCdReader();
+        ICdSectorReader cdReader = getCdReader();
         _fbs.println(I.CMD_GENERATING_SECTOR_LIST());
         PrintStream ps = null;
         try {
@@ -80,30 +84,27 @@ class Command_SectorDump extends Command {
                     throw new CommandLineException(I.IO_OPENING_FILE_NOT_FOUND_NAME(_sOutfile), ex);
                 }
             }
-            SectorCounter counter = new SectorCounter();
+            ps.println(cdReader.getSourceFile());
+            SectorTypeCounter counter = new SectorTypeCounter();
             SectorClaimSystem it = SectorClaimSystem.create(cdReader);
-            while (it.hasNext()) {
-                SectorClaimSystem.ClaimedSector cs = it.next(DebugLogger.Log);
-                IIdentifiedSector idSect = cs.getClaimer();
-                if (idSect != null) {
-                    ps.println(idSect);
-                } else {
-                    CdSector cdSector = cs.getSector();
-                    StringBuilder sb = new StringBuilder();
-                    // also add the first 32 bytes for unknown sectors
-                    // may be helpful for debugging
-                    for (int i = 0; i < 32; i++) {
-                        sb.append(String.format("%02x", cdSector.readUserDataByte(i)));
+            try {
+                while (it.hasNext()) {
+                    IIdentifiedSector idSect;
+                    try {
+                        idSect = it.next(DebugLogger.Log);
+                    } catch (CdException.Read ex) {
+                        throw new CommandLineException(I.IO_READING_FROM_FILE_ERROR_NAME(ex.getFile().toString()), ex);
                     }
-                    ps.println(cdSector + " " + sb);
+                    ps.println(idSect);
+                    counter.increment(idSect);
                 }
-                counter.increment(idSect);
+                it.flush(DebugLogger.Log);
+            } catch (LoggedFailure ex) {
+                throw new CommandLineException(ex.getSourceMessage(), ex);
             }
             for (Map.Entry<String, Integer> entry : counter) {
                 ps.println(entry.getKey() + " " + entry.getValue());
             }
-        } catch (CdFileSectorReader.CdReadException ex) {
-            throw new CommandLineException(I.IO_READING_FROM_FILE_ERROR_NAME(ex.getFile().toString()), ex);
         } finally {
             if (ps != null) {
                 ps.flush();

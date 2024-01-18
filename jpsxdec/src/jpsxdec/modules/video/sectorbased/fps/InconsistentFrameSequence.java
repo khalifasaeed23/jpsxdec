@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -153,10 +153,10 @@ public class InconsistentFrameSequence {
             throw new RuntimeException(ex);
         }
     }
-    
+
     private @CheckForNull String readNextLine() throws IOException {
         String sLine = _reader.readLine();
-        if (sLine == null) { 
+        if (sLine == null) {
             // if at the end of the resource, but we're looping
             if (_header.iLoopSector >= 0) {
                 // close and reopen the text resource

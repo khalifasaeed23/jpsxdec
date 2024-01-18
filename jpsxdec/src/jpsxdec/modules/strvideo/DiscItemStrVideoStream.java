@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -37,32 +37,27 @@
 
 package jpsxdec.modules.strvideo;
 
-import java.io.PrintStream;
 import java.util.Arrays;
 import java.util.List;
-import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
-import jpsxdec.cdreaders.CdFileSectorReader;
+import jpsxdec.cdreaders.ICdSectorReader;
+import jpsxdec.discitems.Dimensions;
 import jpsxdec.discitems.DiscItem;
 import jpsxdec.discitems.SerializedDiscItem;
 import jpsxdec.i18n.exception.LocalizedDeserializationFail;
 import jpsxdec.i18n.exception.LoggedFailure;
-import jpsxdec.i18n.log.DebugLogger;
 import jpsxdec.i18n.log.ILocalizedLogger;
-import jpsxdec.modules.IIdentifiedSector;
 import jpsxdec.modules.SectorClaimSystem;
-import jpsxdec.modules.sharedaudio.DiscItemAudioStream;
-import jpsxdec.modules.video.Dimensions;
-import jpsxdec.modules.video.IDemuxedFrame;
-import jpsxdec.modules.video.ISectorClaimToDemuxedFrame;
+import jpsxdec.modules.SectorRange;
+import jpsxdec.modules.audio.sectorbased.DiscItemSectorBasedAudioStream;
 import jpsxdec.modules.video.framenumber.FrameNumber;
 import jpsxdec.modules.video.framenumber.HeaderFrameNumber;
 import jpsxdec.modules.video.framenumber.IFrameNumberFormatterWithHeader;
 import jpsxdec.modules.video.framenumber.IndexSectorFrameNumber;
-import jpsxdec.modules.video.sectorbased.DemuxedFrameWithNumberAndDims;
 import jpsxdec.modules.video.sectorbased.DiscItemSectorBasedVideoStream;
-import jpsxdec.modules.video.sectorbased.IVideoSectorWithFrameNumber;
+import jpsxdec.modules.video.sectorbased.SectorBasedDemuxedFrameWithNumberAndDims;
 import jpsxdec.modules.video.sectorbased.SectorBasedVideoInfo;
+import jpsxdec.modules.video.sectorbased.SectorClaimToSectorBasedDemuxedFrame;
 import jpsxdec.modules.xa.DiscItemXaAudioStream;
 
 /** Handles most variations of PlayStation video streams. Since it handles the
@@ -82,7 +77,7 @@ public class DiscItemStrVideoStream extends DiscItemSectorBasedVideoStream {
     private static final String INDEPENDENT_BITSTREAM = "Independent bitstream";
     private final boolean _blnHasIndependentBitstream;
 
-    public DiscItemStrVideoStream(@Nonnull CdFileSectorReader cd, int iStartSector,
+    public DiscItemStrVideoStream(@Nonnull ICdSectorReader cd, int iStartSector,
                                   int iEndSector, @Nonnull Dimensions dim,
                                   @Nonnull IndexSectorFrameNumber.Format indexSectorFrameNumberFormat,
                                   @Nonnull SectorBasedVideoInfo strVidInfo,
@@ -94,7 +89,7 @@ public class DiscItemStrVideoStream extends DiscItemSectorBasedVideoStream {
         _blnHasIndependentBitstream = blnHasIndependentBitstream;
     }
 
-    public DiscItemStrVideoStream(@Nonnull CdFileSectorReader cd, @Nonnull SerializedDiscItem fields)
+    public DiscItemStrVideoStream(@Nonnull ICdSectorReader cd, @Nonnull SerializedDiscItem fields)
             throws LocalizedDeserializationFail
     {
         super(cd, fields);
@@ -113,7 +108,7 @@ public class DiscItemStrVideoStream extends DiscItemSectorBasedVideoStream {
             serial.addYesNo(INDEPENDENT_BITSTREAM, _blnHasIndependentBitstream);
         return serial;
     }
-    
+
     @Override
     public @Nonnull String getSerializationTypeId() {
         return TYPE_ID;
@@ -126,7 +121,7 @@ public class DiscItemStrVideoStream extends DiscItemSectorBasedVideoStream {
 
     @Override
     public int getParentRating(@Nonnull DiscItem child) {
-        if (!(child instanceof DiscItemAudioStream))
+        if (!(child instanceof DiscItemSectorBasedAudioStream))
             return 0;
 
         int iOverlapPercent = child.getOverlap(this)*100 / child.getSectorLength();
@@ -156,7 +151,7 @@ public class DiscItemStrVideoStream extends DiscItemSectorBasedVideoStream {
     }
 
     @Override
-    public FrameNumber getEndFrame() {
+    public @Nonnull FrameNumber getEndFrame() {
         return _headerFrameNumberFormat.getEndFrame(_indexSectorFrameNumberFormat);
     }
 
@@ -166,72 +161,42 @@ public class DiscItemStrVideoStream extends DiscItemSectorBasedVideoStream {
     }
 
     @Override
-    public void fpsDump(@Nonnull PrintStream ps) throws CdFileSectorReader.CdReadException {
-
-        SectorClaimSystem it = createClaimSystem();
-        for (int iSector = 0; it.hasNext(); iSector++) {
-            IIdentifiedSector isect = it.next(DebugLogger.Log).getClaimer();
-            if (isect instanceof IVideoSectorWithFrameNumber) {
-                IVideoSectorWithFrameNumber vidSect = (IVideoSectorWithFrameNumber) isect;
-                ps.println(String.format("%-5d %-4d %d/%d",
-                                        iSector,
-                                        vidSect.getHeaderFrameNumber(),
-                                        vidSect.getChunkNumber(),
-                                        vidSect.getChunksInFrame()));
-            } else {
-                ps.println(String.format(
-                        "%-5d X",
-                        iSector));
-            }
-
-        }
-    }
-
-    @Override
-    public @Nonnull ISectorClaimToDemuxedFrame makeDemuxer() {
-        return new Demuxer(getStartSector(), getEndSector(),
+    public @Nonnull SectorClaimToSectorBasedDemuxedFrame makeDemuxer() {
+        return new Demuxer(makeSectorRange(),
                            _headerFrameNumberFormat.makeFormatter(_indexSectorFrameNumberFormat));
     }
 
-    public static class Demuxer implements ISectorClaimToDemuxedFrame, DemuxedFrameWithNumberAndDims.Listener {
+    public static class Demuxer extends SectorClaimToSectorBasedDemuxedFrame implements SectorBasedDemuxedFrameWithNumberAndDims.Listener {
 
-        private int _iStartSector = 0;
-        private int _iEndSectorInclusive = Integer.MAX_VALUE;
         @Nonnull
         private final IFrameNumberFormatterWithHeader _frameNumberFormatter;
-        @CheckForNull
-        private IDemuxedFrame.Listener _listener;
 
-        public Demuxer(int iStartSector, int iEndSectorInclusive,
+        public Demuxer(@Nonnull SectorRange sectorRange,
                        @Nonnull IFrameNumberFormatterWithHeader frameNumberFormatter)
         {
-            _iStartSector = iStartSector;
-            _iEndSectorInclusive = iEndSectorInclusive;
+            super(sectorRange);
             _frameNumberFormatter = frameNumberFormatter;
         }
 
-        public void setFrameListener(@Nonnull IDemuxedFrame.Listener listener) {
-            _listener = listener;
+        @Override
+        public void attachToSectorClaimer(@Nonnull SectorClaimSystem scs) {
+            StrVideoSectorToDemuxedStrFrame s2f = new StrVideoSectorToDemuxedStrFrame(_sectorRange, this);
+            scs.addIdListener(s2f);
         }
 
-        public void attachToSectorClaimer(@Nonnull SectorClaimSystem scs) {
-            SectorClaimToStrVideoSector s2sv = scs.getClaimer(SectorClaimToStrVideoSector.class);
-            s2sv.setRangeLimit(_iStartSector, _iEndSectorInclusive);
-            s2sv.setListener(new StrVideoSectorToDemuxedStrFrame(this));
-        }
-        
-        public void frameComplete(@Nonnull DemuxedFrameWithNumberAndDims frame, @Nonnull ILocalizedLogger log) 
+        @Override
+        public void frameComplete(@Nonnull SectorBasedDemuxedFrameWithNumberAndDims frame, @Nonnull ILocalizedLogger log)
                 throws LoggedFailure
         {
             FrameNumber fn = _frameNumberFormatter.next(frame.getStartSector(),
                                                         frame.getHeaderFrameNumber(), log);
             frame.setFrame(fn);
-            if (_listener != null)
-                _listener.frameComplete(frame);
+            demuxedFrameComplete(frame);
         }
+        @Override
         public void endOfSectors(@Nonnull ILocalizedLogger log) {
         }
 
     }
-    
+
 }

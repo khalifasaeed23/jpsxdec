@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -98,10 +98,10 @@ public class XaAdpcmDecoder {
     public static int pcmSampleFramesGeneratedFromXaAdpcmSector(int iAdpcmBitsPerSample, boolean blnStereo) {
         int iSoundUnitCount;
         switch (iAdpcmBitsPerSample) {
-            case 4: 
+            case 4:
                 iSoundUnitCount = SOUND_UNITS_IN_4_BIT_SOUND_GROUP;
                 break;
-            case 8: 
+            case 8:
                 iSoundUnitCount = SOUND_UNITS_IN_8_BIT_SOUND_GROUP;
                 break;
             default:
@@ -120,7 +120,7 @@ public class XaAdpcmDecoder {
 
     private final boolean _blnIsStereo;
     private final int _iAdpcmBitsPerSample;
-    
+
     /** Context for the left channel when stereo, or the only channel when mono. */
     @Nonnull
     private final AdpcmContext _leftOrMonoContext;
@@ -135,7 +135,7 @@ public class XaAdpcmDecoder {
     @CheckForNull
     private final short[] _asiRightPcmBuffer;
 
-    /** Length will be the number of sound units per sound group. 
+    /** Length will be the number of sound units per sound group.
      * @see #SOUND_UNITS_IN_4_BIT_SOUND_GROUP
      * @see #SOUND_UNITS_IN_8_BIT_SOUND_GROUP */
     @Nonnull
@@ -169,6 +169,7 @@ public class XaAdpcmDecoder {
             blnHadCorruption = false;
         }
 
+        @Override
         public @Nonnull LogContext copy() {
             LogContext cpy = new LogContext();
             cpy.lngSampleFramesWritten = lngSampleFramesWritten;
@@ -223,7 +224,7 @@ public class XaAdpcmDecoder {
         for (int iSoundUnitIndex = 0; iSoundUnitIndex < _aoSoundUnitDecoders.length; iSoundUnitIndex++) {
             _aoSoundUnitDecoders[iSoundUnitIndex] = new XaAdpcmSoundUnitDecoder(iSoundUnitIndex);
         }
-        
+
         _iAdpcmBitsPerSample = iAdpcmBitsPerSample;
         _blnIsStereo = blnIsStereo;
 
@@ -237,7 +238,7 @@ public class XaAdpcmDecoder {
             _rightContext = null;
             _asiRightPcmBuffer = null;
         }
-        
+
     }
 
     /** Returns the volume scale that PCM samples are multiplied by before being clamped. */
@@ -280,7 +281,7 @@ public class XaAdpcmDecoder {
     }
 
     /** Decodes a sector's worth of ADPCM data.
-     *  Reads 2304 bytes and writes either 4032 or 8064 bytes.  
+     *  Reads 2304 bytes and writes either 4032 or 8064 bytes.
      * @param iSourceSector Optional original sector the ADPCM data came from.
      *                      Only used for logging.
      */
@@ -310,7 +311,7 @@ public class XaAdpcmDecoder {
             throws IOException
     {
         IO.readByteArray(inStream, _abParameterBuffer);
-        
+
         if (_iAdpcmBitsPerSample == 4)
             deinterleave4BitsPerSampleSoundGroup(inStream);
         else // == 8
@@ -328,7 +329,7 @@ public class XaAdpcmDecoder {
                 rightSoundUnit.decodeSoundUnit(_rightContext, _asiRightPcmBuffer, _logContext);
 
                 _logContext.iSoundUnit = -1;
-                
+
                 for (int iSample = 0;
                      iSample < SoundUnitDecoder.SAMPLES_PER_SOUND_UNIT;
                      iSample++, _logContext.lngSampleFramesWritten++)
@@ -343,10 +344,10 @@ public class XaAdpcmDecoder {
                 _logContext.iSoundUnit = iSoundUnit;
                 XaAdpcmSoundUnitDecoder soundUnit = _aoSoundUnitDecoders[iSoundUnit];
                 soundUnit.decodeSoundUnit(_leftOrMonoContext, _asiLeftOrMonoPcmBuffer, _logContext);
-                
+
                 _logContext.iSoundUnit = -1;
 
-                for (int iSample = 0; 
+                for (int iSample = 0;
                      iSample < SoundUnitDecoder.SAMPLES_PER_SOUND_UNIT;
                      iSample++, _logContext.lngSampleFramesWritten++)
                 {
@@ -369,15 +370,15 @@ public class XaAdpcmDecoder {
         // 0,1,2,3, 0,1,2,3, 4,5,6,7, 4,5,6,7
         for (int iSoundUnit = 0; iSoundUnit < 4; iSoundUnit++) {
             _logContext.iSoundUnit = iSoundUnit;
-            _aoSoundUnitDecoders[iSoundUnit].addSoundParamter(_abParameterBuffer[iSoundUnit] & 0xff);
-            _aoSoundUnitDecoders[iSoundUnit].addSoundParamter(_abParameterBuffer[iSoundUnit+4] & 0xff);
+            _aoSoundUnitDecoders[iSoundUnit].addSoundParameter(_abParameterBuffer[iSoundUnit] & 0xff);
+            _aoSoundUnitDecoders[iSoundUnit].addSoundParameter(_abParameterBuffer[iSoundUnit+4] & 0xff);
 
             _logContext.iSoundUnit = iSoundUnit + 4;
-            _aoSoundUnitDecoders[iSoundUnit+4].addSoundParamter(_abParameterBuffer[iSoundUnit+8] & 0xff);
-            _aoSoundUnitDecoders[iSoundUnit+4].addSoundParamter(_abParameterBuffer[iSoundUnit+12] & 0xff);
+            _aoSoundUnitDecoders[iSoundUnit+4].addSoundParameter(_abParameterBuffer[iSoundUnit+8] & 0xff);
+            _aoSoundUnitDecoders[iSoundUnit+4].addSoundParameter(_abParameterBuffer[iSoundUnit+12] & 0xff);
         }
         _logContext.iSoundUnit = -1;
-        
+
         // de-interleave the sound units
         for (int iSampleIdx = 0; iSampleIdx < SoundUnitDecoder.SAMPLES_PER_SOUND_UNIT; iSampleIdx++)
         {
@@ -424,11 +425,11 @@ public class XaAdpcmDecoder {
         for (_logContext.iSoundUnit = 0; _logContext.iSoundUnit < 4; _logContext.iSoundUnit++) {
             XaAdpcmSoundUnitDecoder soundUnit = _aoSoundUnitDecoders[_logContext.iSoundUnit];
             for (int iRepeat = _logContext.iSoundUnit; iRepeat < 16; iRepeat+=4) {
-                soundUnit.addSoundParamter(_abParameterBuffer[iRepeat] & 0xff);
+                soundUnit.addSoundParameter(_abParameterBuffer[iRepeat] & 0xff);
             }
         }
         _logContext.iSoundUnit = -1;
-        
+
         // de-interleave the sound units
         for (int iSampleIdx = 0; iSampleIdx < SoundUnitDecoder.SAMPLES_PER_SOUND_UNIT; iSampleIdx++)
         {
@@ -459,7 +460,7 @@ public class XaAdpcmDecoder {
         /** Not used, but useful when debugging. */
         private final int _iSoundUnitIndex;
         private final SoundUnitDecoder _soundUnitDecoder = new SoundUnitDecoder(K0K1Filter.XA);
-        
+
         private XaAdpcmSoundUnit.Builder _soundUnitBuilder = new XaAdpcmSoundUnit.Builder();
 
         /** @param iSoundUnitIndex Sound unit number. */
@@ -470,7 +471,7 @@ public class XaAdpcmDecoder {
         /** @param iSoundParameter  An unsigned byte value as read from the
          *                          source stream, holding the range and
          *                          filter parameters for this sound unit. */
-        public void addSoundParamter(int iSoundParameter) {
+        public void addSoundParameter(int iSoundParameter) {
             _soundUnitBuilder.addRedundantParameter(iSoundParameter);
         }
 

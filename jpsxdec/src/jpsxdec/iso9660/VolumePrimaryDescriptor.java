@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -43,12 +43,12 @@ import java.io.InputStream;
 import javax.annotation.Nonnull;
 import jpsxdec.util.BinaryDataNotRecognized;
 
-/** ECMA119: 8.4 
+/** ECMA119: 8.4
  *<p>
  * The Volume Primary Descriptor should appear in sector 16 of a CD.
  */
 public class VolumePrimaryDescriptor extends ISO9660Struct {
-    
+
     /*                             type                   */
     /*                             id                     */
     /*                             version                */
@@ -86,10 +86,10 @@ public class VolumePrimaryDescriptor extends ISO9660Struct {
     public VolumePrimaryDescriptor(@Nonnull InputStream is)
             throws EOFException, IOException, BinaryDataNotRecognized
     {
-        /* type                   */ magic1(is, 1); 
-        /* id                     */ magicS(is, "CD001"); 
-        /* version                */ magic1(is, 1);        
-        /* unused1                */ magic1(is, 0);       
+        /* type                   */ magic1(is, 1);
+        /* id                     */ magicS(is, "CD001");
+        /* version                */ magic1(is, 1);
+        /* unused1                */ magic1(is, 0);
            system_id               = readS(is, 32);
            volume_id               = readS(is, 32);
         /* unused2                */ magicXzero(is, 8);

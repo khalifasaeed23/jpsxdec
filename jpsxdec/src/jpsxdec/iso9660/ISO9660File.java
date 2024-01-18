@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -44,8 +44,8 @@ public class ISO9660File extends File {
 
     private final long _lngStartSector;
     private final long _lngSize;
-    
-    public ISO9660File(@Nonnull File directory, @Nonnull String sFileName, 
+
+    public ISO9660File(@Nonnull File directory, @Nonnull String sFileName,
                        long lngStartSector, long lngSize)
     {
         super(directory, sFileName);
@@ -60,9 +60,9 @@ public class ISO9660File extends File {
     public long getEndSector() {
         return _lngStartSector + getLength() - 1;
     }
-    
+
     public long getStartSector() {
         return _lngStartSector;
     }
-    
+
 }

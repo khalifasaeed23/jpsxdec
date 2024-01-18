@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -113,7 +113,7 @@ public class FrameLookup {
     public @Nonnull FrameNumber.Type getType() {
         return _type;
     }
-    
+
     public @Nonnull FrameCompareIs compareTo(FrameNumber frameNumber) {
         FormattedFrameNumber ffn;
         switch (_type) {
@@ -130,9 +130,9 @@ public class FrameLookup {
                 break;
             default: throw new RuntimeException();
         }
-        int i = Misc.intCompare(_iFrameValue, ffn.getFrameValue());
+        int i = Integer.compare(_iFrameValue, ffn.getFrameValue());
         if (i == 0)
-            i = Misc.intCompare(_iDuplicateIndex, ffn.getDuplicateIndex());
+            i = Integer.compare(_iDuplicateIndex, ffn.getDuplicateIndex());
 
         if (i < 0)
             return FrameCompareIs.LESSTHAN;
@@ -141,7 +141,7 @@ public class FrameLookup {
         else
             return FrameCompareIs.EQUAL;
     }
-    
+
     @Override
     public String toString() {
         return serialize();

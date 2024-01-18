@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2013-2019  Michael Sabin
+ * Copyright (C) 2013-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -54,16 +54,18 @@ import javax.annotation.Nonnull;
 import javax.imageio.ImageIO;
 import javax.sound.sampled.AudioFormat;
 import jpsxdec.formats.JavaImageFormat;
+import jpsxdec.formats.Pc601YCbCrImage;
+import jpsxdec.formats.Rec601YCbCrImage;
 import jpsxdec.formats.RgbIntImage;
-import jpsxdec.formats.YCbCrImage;
 import jpsxdec.i18n.I;
 import jpsxdec.i18n.ILocalizedMessage;
 import jpsxdec.i18n.exception.LocalizedFileNotFoundException;
 import jpsxdec.i18n.exception.LoggedFailure;
 import jpsxdec.i18n.log.ILocalizedLogger;
-import jpsxdec.modules.sharedaudio.DecodedAudioPacket;
+import jpsxdec.modules.audio.DecodedAudioPacket;
 import jpsxdec.modules.video.framenumber.FormattedFrameNumber;
 import jpsxdec.psxvideo.bitstreams.BitStreamUncompressor;
+import jpsxdec.psxvideo.bitstreams.IBitStreamUncompressor;
 import jpsxdec.psxvideo.mdec.Calc;
 import jpsxdec.psxvideo.mdec.MdecDecoder;
 import jpsxdec.psxvideo.mdec.MdecDecoder_double;
@@ -79,7 +81,7 @@ import jpsxdec.util.aviwriter.AviWriterDIB;
 import jpsxdec.util.aviwriter.AviWriterMJPG;
 import jpsxdec.util.aviwriter.AviWriterYV12;
 
-/** Video Decoding Pipeline. 
+/** Video Decoding Pipeline.
  * The pipeline is a little complicated since each path is specific about
  * its inputs and outputs. Here are all the possible branches:
  *<pre>
@@ -98,20 +100,35 @@ import jpsxdec.util.aviwriter.AviWriterYV12;
  */
 public class VDP {
 
+    public static boolean LOG_STACK_TRACE = true;
+    public static boolean MOCK_CREATE_DIRECTORY = false;
+
+    private static void makeDirsForFile(@Nonnull File f) throws LocalizedFileNotFoundException {
+        if (!MOCK_CREATE_DIRECTORY)
+            IO.makeDirsForFile(f);
+    }
+
+
     private static final Logger LOG = Logger.getLogger(VDP.class.getName());
-    
+
     public interface GeneratedFileListener {
         void fileGenerated(@Nonnull File f);
+    }
+    public interface IFileGenerator {
+        void setGenFileListener(@CheckForNull GeneratedFileListener listener);
     }
 
     public interface IBitstreamListener {
         void bitstream(@Nonnull byte[] abBitstream, int iSize,
                        @CheckForNull FormattedFrameNumber frameNumber,
                        @Nonnull Fraction presentationSector)
-                throws LoggedFailure;
+                throws IOWritingException;
+    }
+    public interface IBitstreamProducer {
+        void setListener(@CheckForNull VDP.IBitstreamListener bitstreamListener);
     }
 
-    public static class Bitstream2File implements IBitstreamListener {
+    public static class Bitstream2File implements IBitstreamListener, IFileGenerator {
 
         @Nonnull
         private final VideoFileNameFormatter _formatter;
@@ -125,6 +142,7 @@ public class VDP {
             _log = log;
         }
 
+        @Override
         public void bitstream(@Nonnull byte[] abBitstream, int iSize,
                               @CheckForNull FormattedFrameNumber frameNumber,
                               @Nonnull Fraction presentationSector)
@@ -136,7 +154,7 @@ public class VDP {
                 _log.log(Level.SEVERE, ex.getSourceMessage(), ex);
                 return;
             }
-            
+
             FileOutputStream fos = null;
             try {
                 fos = new FileOutputStream(f);
@@ -152,17 +170,18 @@ public class VDP {
             }
         }
 
+        @Override
         public void setGenFileListener(@CheckForNull GeneratedFileListener listener) {
             _fileGenListener = listener;
         }
     }
 
-    public static class Bitstream2Mdec implements IBitstreamListener {
+    public static class Bitstream2Mdec implements IBitstreamListener, IMdecProducer {
 
         @CheckForNull
         private IMdecListener _listener;
         @CheckForNull
-        private Class<? extends BitStreamUncompressor> _uncompressorType;
+        private Class<? extends IBitStreamUncompressor> _uncompressorType;
 
         public Bitstream2Mdec() {
         }
@@ -170,36 +189,37 @@ public class VDP {
             _listener = mdecListener;
         }
 
-        public void setMdecListener(@CheckForNull IMdecListener listener) {
+        @Override
+        public void setListener(@CheckForNull IMdecListener listener) {
             _listener = listener;
         }
 
-        public void bitstream(@Nonnull byte[] abBitstream, int iBitstreamSize, 
+        @Override
+        public void bitstream(@Nonnull byte[] abBitstream, int iBitstreamSize,
                               @CheckForNull FormattedFrameNumber frameNumber,
                               @Nonnull Fraction presentationSector)
-                throws LoggedFailure
+                throws IOWritingException
         {
             try {
-                BitStreamUncompressor uncompressor = BitStreamUncompressor.identifyUncompressor(
+                IBitStreamUncompressor uncompressor = BitStreamUncompressor.identifyUncompressor(
                                                         abBitstream, iBitstreamSize);
                 if (_uncompressorType != null) {
-                    Class<? extends BitStreamUncompressor> newType = uncompressor.getClass();
+                    Class<? extends IBitStreamUncompressor> newType = uncompressor.getClass();
                     if (!_uncompressorType.equals(newType)) {
                         LOG.log(Level.WARNING, "Bitstream format changed from {0} to {1}",
-                                               new Object[]{_uncompressorType.getSimpleName(), newType.getSimpleName()});
+                                new Object[]{_uncompressorType.getSimpleName(), newType.getSimpleName()});
                         _uncompressorType = newType;
                     }
                 } else {
                     _uncompressorType = uncompressor.getClass();
-                    LOG.log(Level.INFO, "Bitstream format identified {0}",
-                                        _uncompressorType.getSimpleName());
+                    LOG.log(Level.INFO, "Bitstream format: {0}", _uncompressorType.getSimpleName());
                 }
                 if (_listener != null)
                     _listener.mdec(uncompressor, frameNumber, presentationSector);
             } catch (BinaryDataNotRecognized ex) {
                 ILocalizedMessage msg = FrameMessage.UNABLE_TO_DETERMINE_FRAME_TYPE_FRM(frameNumber);
                 if (_listener != null) {
-                    _listener.getLog().log(Level.SEVERE, msg, ex);
+                    _listener.getLog().log(Level.SEVERE, msg, LOG_STACK_TRACE ? ex : null);
                     _listener.error(msg, frameNumber, presentationSector);
                 }
             }
@@ -208,17 +228,20 @@ public class VDP {
     }
 
     /** Either
-     * {@link #mdec(jpsxdec.psxvideo.mdec.MdecInputStream, jpsxdec.discitems.FormattedFrameNumber, jpsxdec.util.Fraction)
+     * {@link #mdec(MdecInputStream, FormattedFrameNumber, Fraction)}
      * or
-     * {@link #error(jpsxdec.i18n.ILocalizedMessage, jpsxdec.discitems.FormattedFrameNumber, jpsxdec.util.Fraction) 
+     * {@link #error(ILocalizedMessage, FormattedFrameNumber, Fraction)}
      * will be called for each frame. */
     public interface IMdecListener {
-        void mdec(@Nonnull MdecInputStream mdecIn, @CheckForNull FormattedFrameNumber frameNumber, @Nonnull Fraction presentationSector) throws LoggedFailure;
-        void error(@Nonnull ILocalizedMessage errMsg, @CheckForNull FormattedFrameNumber frameNumber, @Nonnull Fraction presentationSector) throws LoggedFailure;
+        void mdec(@Nonnull MdecInputStream mdecIn, @CheckForNull FormattedFrameNumber frameNumber, @Nonnull Fraction presentationSector) throws IOWritingException;
+        void error(@Nonnull ILocalizedMessage errMsg, @CheckForNull FormattedFrameNumber frameNumber, @Nonnull Fraction presentationSector) throws IOWritingException;
         @Nonnull ILocalizedLogger getLog();
     }
-    
-    public static class Mdec2File implements IMdecListener {
+    public interface IMdecProducer {
+        void setListener(@CheckForNull VDP.IMdecListener mdecListener);
+    }
+
+    public static class Mdec2File implements IMdecListener, IFileGenerator {
 
         @Nonnull
         private final VideoFileNameFormatter _formatter;
@@ -230,13 +253,13 @@ public class VDP {
 
         public Mdec2File(@Nonnull VideoFileNameFormatter formatter, int iWidth, int iHeight, @Nonnull ILocalizedLogger log) {
             _formatter = formatter;
-            _iTotalBlocks = Calc.blocks(iHeight, iWidth);
+            _iTotalBlocks = Calc.blocks(iWidth, iHeight);
             _log = log;
         }
-        
+
+        @Override
         public void mdec(@Nonnull MdecInputStream mdecIn, @CheckForNull FormattedFrameNumber frameNumber,
                          @Nonnull Fraction presentationSector_ignored)
-                throws LoggedFailure
         {
             File f = _formatter.format(frameNumber, _log);
             try {
@@ -245,7 +268,7 @@ public class VDP {
                 _log.log(Level.SEVERE, ex.getSourceMessage(), ex);
                 return; // just skip the file without failing
             }
-            
+
             BufferedOutputStream bos = null;
             try {
                 bos = new BufferedOutputStream(new FileOutputStream(f));
@@ -267,23 +290,26 @@ public class VDP {
             }
         }
 
+        @Override
         public void error(@Nonnull ILocalizedMessage errMsg, @CheckForNull FormattedFrameNumber frameNumber,
                           @Nonnull Fraction presentationSector)
         {
             // error frames are simply not written
         }
 
+        @Override
         public @Nonnull ILocalizedLogger getLog() {
             return _log;
         }
 
+        @Override
         public void setGenFileListener(@CheckForNull GeneratedFileListener listener) {
             _fileGenListener = listener;
         }
     }
 
-    
-    public static class Mdec2Jpeg implements IMdecListener {
+
+    public static class Mdec2Jpeg implements IMdecListener, IFileGenerator {
 
         @Nonnull
         private final VideoFileNameFormatter _formatter;
@@ -302,9 +328,9 @@ public class VDP {
             _log = log;
         }
 
+        @Override
         public void mdec(@Nonnull MdecInputStream mdecIn, @CheckForNull FormattedFrameNumber frameNumber,
                          @Nonnull Fraction presentationSector)
-                throws LoggedFailure
         {
             File f = _formatter.format(frameNumber, _log);
             try {
@@ -349,23 +375,26 @@ public class VDP {
             }
         }
 
+        @Override
         public void error(@Nonnull ILocalizedMessage errMsg, @CheckForNull FormattedFrameNumber frameNumber,
                           @Nonnull Fraction presentationSector)
         {
             // error frames are simply not written
         }
 
+        @Override
         public @Nonnull ILocalizedLogger getLog() {
             return _log;
         }
 
+        @Override
         public void setGenFileListener(@CheckForNull GeneratedFileListener listener) {
             _fileGenListener = listener;
         }
     }
 
 
-    public static class Mdec2Decoded implements IMdecListener {
+    public static class Mdec2Decoded implements IMdecListener, IDecodedProducer {
 
         @Nonnull
         private final MdecDecoder _decoder;
@@ -379,9 +408,10 @@ public class VDP {
             _log = log;
         }
 
+        @Override
         public void mdec(@Nonnull MdecInputStream mdecIn, @CheckForNull FormattedFrameNumber frameNumber,
-                         @Nonnull Fraction presentationSector) 
-                throws LoggedFailure
+                         @Nonnull Fraction presentationSector)
+                throws IOWritingException
         {
             try {
                 _decoder.decode(mdecIn);
@@ -394,21 +424,24 @@ public class VDP {
                 _listener.decoded(_decoder, frameNumber, presentationSector);
         }
 
+        @Override
         public void error(@Nonnull ILocalizedMessage errMsg, @CheckForNull FormattedFrameNumber frameNumber,
                           @Nonnull Fraction presentationSector)
-                throws LoggedFailure
+                throws IOWritingException
         {
             if (_listener != null)
                 _listener.error(errMsg, frameNumber, presentationSector);
         }
 
-        public void setDecoded(@CheckForNull IDecodedListener decoded) {
+        @Override
+        public void setDecodedListener(@CheckForNull IDecodedListener decoded) {
             if (decoded == null)
                 return;
             decoded.assertAcceptsDecoded(_decoder);
             _listener = decoded;
         }
 
+        @Override
         public @Nonnull ILocalizedLogger getLog() {
             return _log;
         }
@@ -417,18 +450,21 @@ public class VDP {
 
     public interface IDecodedListener {
         void decoded(@Nonnull MdecDecoder decoder, @CheckForNull FormattedFrameNumber frameNumber,
-                     @Nonnull Fraction presentationSector) throws LoggedFailure;
+                     @Nonnull Fraction presentationSector) throws IOWritingException;
         void error(@Nonnull ILocalizedMessage errMsg, @CheckForNull FormattedFrameNumber frameNumber,
-                   @Nonnull Fraction presentationSector) throws LoggedFailure;
+                   @Nonnull Fraction presentationSector) throws IOWritingException;
         void assertAcceptsDecoded(@Nonnull MdecDecoder decoder) throws IllegalArgumentException;
     }
+    public interface IDecodedProducer {
+        void setDecodedListener(@CheckForNull IDecodedListener decoded);
+    }
 
-    public static class Decoded2JavaImage implements IDecodedListener {
+    public static class Decoded2JavaImage implements IDecodedListener, IFileGenerator {
 
         @Nonnull
         private final VideoFileNameFormatter _formatter;
         @Nonnull
-        private final String _sFmt;
+        private final String _sImageIOid;
         @Nonnull
         private final BufferedImage _rgbImg;
         @Nonnull
@@ -438,18 +474,18 @@ public class VDP {
 
         public Decoded2JavaImage(@Nonnull VideoFileNameFormatter formatter, @Nonnull JavaImageFormat eFmt, int iWidth, int iHeight, @Nonnull ILocalizedLogger log) {
             _formatter = formatter;
-            _sFmt = eFmt.getId();
+            _sImageIOid = eFmt.getImageIOid();
             _rgbImg = new BufferedImage(iWidth, iHeight, BufferedImage.TYPE_INT_RGB);
             _log = log;
         }
-        
+
+        @Override
         public void decoded(@Nonnull MdecDecoder decoder, @CheckForNull FormattedFrameNumber frameNumber,
                             @Nonnull Fraction presentationSector)
-                throws LoggedFailure
         {
             decoder.readDecodedRgb(_rgbImg.getWidth(), _rgbImg.getHeight(),
                     ((DataBufferInt)_rgbImg.getRaster().getDataBuffer()).getData());
-            
+
             File f = _formatter.format(frameNumber, _log);
             try {
                 IO.makeDirsForFile(f);
@@ -459,7 +495,7 @@ public class VDP {
             }
 
             try {
-                if (ImageIO.write(_rgbImg, _sFmt, f)) {
+                if (ImageIO.write(_rgbImg, _sImageIOid, f)) {
                     if (_fileGenListener != null)
                         _fileGenListener.fileGenerated(f);
                 } else {
@@ -470,14 +506,17 @@ public class VDP {
             }
         }
 
+        @Override
         public void error(@Nonnull ILocalizedMessage errMsg, @CheckForNull FormattedFrameNumber frameNumber,
                           @Nonnull Fraction presentationSector)
         {
             // error frames are simply not written
         }
 
+        @Override
         public void assertAcceptsDecoded(@Nonnull MdecDecoder decoder) {}
 
+        @Override
         public void setGenFileListener(@CheckForNull GeneratedFileListener listener) {
             _fileGenListener = listener;
         }
@@ -488,11 +527,36 @@ public class VDP {
     // ########################################################################
     // ########################################################################
 
-    /** Most Avi will take Decoded as input, but MJPG will need Mdec as input,
-     *  so save the interface implementation for subclasses. */
-    public static abstract class ToAvi implements Closeable, DecodedAudioPacket.Listener {
+    public static abstract class ToVideo implements Closeable, DecodedAudioPacket.Listener, IFileGenerator  {
         @Nonnull
         protected final File _outputFile;
+        @CheckForNull
+        private GeneratedFileListener _fileGenListener;
+
+        public ToVideo(@Nonnull File outputFile) {
+            _outputFile = outputFile;
+        }
+
+        final public @Nonnull File getOutputFile() {
+            return _outputFile;
+        }
+
+        @Override
+        final public void setGenFileListener(@CheckForNull GeneratedFileListener listener) {
+            _fileGenListener = listener;
+        }
+
+        protected void fileGenerated(@Nonnull File file) {
+            if (_fileGenListener != null)
+                _fileGenListener.fileGenerated(file);
+        }
+
+        abstract public void open() throws LocalizedFileNotFoundException, FileNotFoundException, IOException;
+    }
+
+    /** Most Avi will take Decoded as input, but MJPG will need Mdec as input,
+     *  so save the interface implementation for subclasses. */
+    public static abstract class ToAvi extends ToVideo {
         protected final int _iWidth, _iHeight;
         @Nonnull
         protected final VideoSync _vidSync;
@@ -504,12 +568,10 @@ public class VDP {
         protected final ILocalizedLogger _log;
         @CheckForNull
         protected AviWriter _writer;
-        @CheckForNull
-        protected GeneratedFileListener _fileGenListener;
 
         /** Video without audio. */
         public ToAvi(@Nonnull File outputFile, int iWidth, int iHeight, @Nonnull VideoSync vidSync, @Nonnull ILocalizedLogger log) {
-            _outputFile = outputFile;
+            super(outputFile);
             _iWidth = iWidth; _iHeight = iHeight;
             _vidSync = vidSync; _avSync =  null;
             _af = null;
@@ -520,27 +582,20 @@ public class VDP {
         public ToAvi(@Nonnull File outputFile, int iWidth, int iHeight,
                      @Nonnull AudioVideoSync avSync, @Nonnull AudioFormat af, @Nonnull ILocalizedLogger log)
         {
-            _outputFile = outputFile;
+            super(outputFile);
             _iWidth = iWidth; _iHeight = iHeight;
             _vidSync = _avSync = avSync;
             _af = af;
             _log = log;
         }
 
-        final public @Nonnull File getOutputFile() {
-            return _outputFile;
-        }
-
         final public @CheckForNull AviWriter getAviWriter() {
             return _writer;
         }
 
-        abstract public void open() 
-                throws LocalizedFileNotFoundException, FileNotFoundException, IOException;
-
         // subclasses will implement IDecodedListener or IMdecListener to match this
         abstract public void error(@Nonnull ILocalizedMessage sErr, @CheckForNull FormattedFrameNumber frameNumber,
-                                   @Nonnull Fraction presentationSector) throws LoggedFailure;
+                                   @Nonnull Fraction presentationSector) throws IOWritingException;
 
         final protected void prepForFrame(@CheckForNull FormattedFrameNumber frameNumber,
                                           @Nonnull Fraction presentationSector)
@@ -588,6 +643,7 @@ public class VDP {
             }
         }
 
+        @Override
         final public void audioPacketComplete(@Nonnull DecodedAudioPacket packet,
                                               @Nonnull ILocalizedLogger log)
                 throws LoggedFailure
@@ -616,14 +672,11 @@ public class VDP {
             }
         }
 
+        @Override
         public void close() throws IOException {
             if (_writer != null) {
                 _writer.close();
             }
-        }
-
-        public void setGenFileListener(@CheckForNull GeneratedFileListener listener) {
-            _fileGenListener = listener;
         }
     }
 
@@ -641,27 +694,29 @@ public class VDP {
             super(outputFile, iWidth, iHeight, avSync, af, log);
         }
 
+        @Override
         public void assertAcceptsDecoded(@Nonnull MdecDecoder decoder) {}
 
+        @Override
         public void open()
                 throws LocalizedFileNotFoundException, FileNotFoundException, IOException
         {
             if (_writer == null) {
-                IO.makeDirsForFile(_outputFile);
+                makeDirsForFile(_outputFile);
                 _writer = _writerDib = new AviWriterDIB(_outputFile,
                                                         _iWidth, _iHeight,
                                                         _vidSync.getFpsNum(),
                                                         _vidSync.getFpsDenom(),
                                                         _af);
-                if (_fileGenListener != null)
-                    _fileGenListener.fileGenerated(_outputFile);
+                fileGenerated(_outputFile);
                 _aiImageBuf = new int[_iWidth*_iHeight];
             }
         }
 
+        @Override
         public void decoded(@Nonnull MdecDecoder decoder, @CheckForNull FormattedFrameNumber frameNumber,
                             @Nonnull Fraction presentationSector)
-                throws LoggedFailure
+                throws IOWritingException
         {
             if (_writerDib == null)
                 throw new IllegalStateException("AVI not open.");
@@ -670,14 +725,14 @@ public class VDP {
                 prepForFrame(frameNumber, presentationSector);
                 _writerDib.writeFrameRGB(_aiImageBuf, 0, _writerDib.getWidth());
             } catch (IOException ex) {
-                throw new LoggedFailure(_log, Level.SEVERE,
-                        I.IO_WRITING_TO_FILE_ERROR_NAME(_writer.getFile().toString()), ex);
+                throw new IOWritingException(ex, _writer.getFile());
             }
         }
 
+        @Override
         public void error(@Nonnull ILocalizedMessage errMsg, @CheckForNull FormattedFrameNumber frameNumber,
                           @Nonnull Fraction presentationSector)
-                throws LoggedFailure
+                throws IOWritingException
         {
             if (_writerDib == null)
                 throw new IllegalStateException("AVI not open.");
@@ -687,8 +742,7 @@ public class VDP {
                 prepForFrame(frameNumber, presentationSector);
                 _writerDib.writeFrameRGB(rgb.getData(), 0, _writerDib.getWidth());
             } catch (IOException ex) {
-                throw new LoggedFailure(_log, Level.SEVERE,
-                        I.IO_WRITING_TO_FILE_ERROR_NAME(_writer.getFile().toString()), ex);
+                throw new IOWritingException(ex, _writer.getFile());
             }
         }
 
@@ -697,7 +751,7 @@ public class VDP {
     /** Only supports videos with even dimensions. */
     public static class Decoded2YuvAvi extends ToAvi implements IDecodedListener {
         @CheckForNull
-        protected YCbCrImage _yuvImgBuff;
+        private Rec601YCbCrImage _yuvImgBuff;
         @CheckForNull
         protected AviWriterYV12 _writerYuv;
 
@@ -709,7 +763,7 @@ public class VDP {
         }
 
         /** @throws IllegalArgumentException if dimensions are not even */
-        public Decoded2YuvAvi(@Nonnull File outputFile, int iWidth, int iHeight, 
+        public Decoded2YuvAvi(@Nonnull File outputFile, int iWidth, int iHeight,
                               @Nonnull AudioVideoSync avSync, @Nonnull AudioFormat af, @Nonnull ILocalizedLogger log)
         {
             super(outputFile, iWidth, iHeight, avSync, af, log);
@@ -717,11 +771,13 @@ public class VDP {
                 throw new IllegalArgumentException("YUV AVI only supports even dimensions");
         }
 
+        @Override
         public void assertAcceptsDecoded(@Nonnull MdecDecoder decoder) throws IllegalArgumentException {
             if (!(decoder instanceof MdecDecoder_double))
                 throw new IllegalArgumentException(getClass().getName() + " can't handle " + decoder.getClass().getName());
         }
-        
+
+        @Override
         public void open()
                 throws LocalizedFileNotFoundException, FileNotFoundException, IOException
         {
@@ -732,15 +788,15 @@ public class VDP {
                                                          _vidSync.getFpsNum(),
                                                          _vidSync.getFpsDenom(),
                                                          _af);
-                if (_fileGenListener != null)
-                    _fileGenListener.fileGenerated(_outputFile);
-                _yuvImgBuff = new YCbCrImage(_iWidth, _iHeight);
+                fileGenerated(_outputFile);
+                _yuvImgBuff = new Rec601YCbCrImage(_iWidth, _iHeight);
             }
         }
 
+        @Override
         public void decoded(@Nonnull MdecDecoder decoder, @CheckForNull FormattedFrameNumber frameNumber,
                             @Nonnull Fraction presentationSector)
-                throws LoggedFailure
+                throws IOWritingException
         {
             if (_writerYuv == null)
                 throw new IllegalStateException("AVI not open.");
@@ -748,16 +804,18 @@ public class VDP {
             ((MdecDecoder_double)decoder).readDecoded_Rec601_YCbCr420(_yuvImgBuff);
             try {
                 prepForFrame(frameNumber, presentationSector);
-                _writerYuv.write(_yuvImgBuff.getY(), _yuvImgBuff.getCb(), _yuvImgBuff.getCr());
+                // if this happens for the JYUV subclass, the brightness will be off
+                // but it's an error image so doesn't really matter
+                _writerYuv.write(_yuvImgBuff.getYBuff(), _yuvImgBuff.getCbBuff(), _yuvImgBuff.getCrBuff());
             } catch (IOException ex) {
-                throw new LoggedFailure(_log, Level.SEVERE, 
-                        I.IO_WRITING_TO_FILE_ERROR_NAME(_writer.getFile().toString()), ex);
+                throw new IOWritingException(ex, _writerYuv.getFile());
             }
         }
 
+        @Override
         public void error(@Nonnull ILocalizedMessage errMsg, @CheckForNull FormattedFrameNumber frameNumber,
                           @Nonnull Fraction presentationSector)
-                throws LoggedFailure
+                throws IOWritingException
         {
             if (_writerYuv == null)
                 throw new IllegalStateException("AVI not open.");
@@ -765,11 +823,10 @@ public class VDP {
             BufferedImage bi = makeErrorImage(errMsg, _writerYuv.getWidth(), _writerYuv.getHeight());
             try {
                 prepForFrame(frameNumber, presentationSector);
-                YCbCrImage yuv = new YCbCrImage(bi);
-                _writerYuv.write(yuv.getY(), yuv.getCb(), yuv.getCr());
+                Rec601YCbCrImage yuv = new Rec601YCbCrImage(bi);
+                _writerYuv.write(yuv.getYBuff(), yuv.getCbBuff(), yuv.getCrBuff());
             } catch (IOException ex) {
-                throw new LoggedFailure(_log, Level.SEVERE,
-                        I.IO_WRITING_TO_FILE_ERROR_NAME(_writer.getFile().toString()), ex);
+                throw new IOWritingException(ex, _writer.getFile());
             }
         }
 
@@ -778,7 +835,10 @@ public class VDP {
 
     public static class Decoded2JYuvAvi extends Decoded2YuvAvi {
 
-        public Decoded2JYuvAvi(@Nonnull File outputFile, int iWidth, int iHeight, 
+        @CheckForNull
+        protected Pc601YCbCrImage _yuvImgBuff;
+
+        public Decoded2JYuvAvi(@Nonnull File outputFile, int iWidth, int iHeight,
                                @Nonnull AudioVideoSync avSync, @Nonnull AudioFormat af, @Nonnull ILocalizedLogger log)
         {
             super(outputFile, iWidth, iHeight, avSync, af, log);
@@ -789,9 +849,15 @@ public class VDP {
         }
 
         @Override
+        public void open() throws LocalizedFileNotFoundException, FileNotFoundException, IOException {
+            super.open();
+            _yuvImgBuff = new Pc601YCbCrImage(_iWidth, _iHeight);
+        }
+
+        @Override
         public void decoded(@Nonnull MdecDecoder decoder, @CheckForNull FormattedFrameNumber frameNumber,
                             @Nonnull Fraction presentationSector)
-                throws LoggedFailure
+                throws IOWritingException
         {
             if (_writerYuv == null)
                 throw new IllegalStateException("AVI not open.");
@@ -799,13 +865,12 @@ public class VDP {
             ((MdecDecoder_double)decoder).readDecoded_JFIF_YCbCr420(_yuvImgBuff);
             try {
                 prepForFrame(frameNumber, presentationSector);
-                _writerYuv.write(_yuvImgBuff.getY(), _yuvImgBuff.getCb(), _yuvImgBuff.getCr());
+                _writerYuv.write(_yuvImgBuff.getYBuff(), _yuvImgBuff.getCbBuff(), _yuvImgBuff.getCrBuff());
             } catch (IOException ex) {
-                throw new LoggedFailure(_log, Level.SEVERE,
-                        I.IO_WRITING_TO_FILE_ERROR_NAME(_writer.getFile().toString()), ex);
+                throw new IOWritingException(ex, _writer.getFile());
             }
         }
-        
+
     }
 
     /** This Avi output is unique in that it takes Mdec as input instead of Decoded. */
@@ -827,20 +892,21 @@ public class VDP {
             _jpegTranslator = new jpsxdec.psxvideo.mdec.tojpeg.Mdec2Jpeg(iWidth, iHeight);
         }
 
+        @Override
         public void open()
                 throws LocalizedFileNotFoundException, FileNotFoundException, IOException
         {
             if (_writer == null) {
                 IO.makeDirsForFile(_outputFile);
                 _writer = _mjpegWriter = new AviWriterMJPG(_outputFile, _iWidth, _iHeight, _vidSync.getFpsNum(), _vidSync.getFpsDenom(), _af);
-                if (_fileGenListener != null)
-                    _fileGenListener.fileGenerated(_outputFile);
+                fileGenerated(_outputFile);
             }
         }
 
+        @Override
         public void mdec(@Nonnull MdecInputStream mdecIn, @CheckForNull FormattedFrameNumber frameNumber,
                          @Nonnull Fraction presentationSector)
-                throws LoggedFailure
+                throws IOWritingException
         {
             if (_mjpegWriter == null)
                 throw new IllegalStateException("AVI not open.");
@@ -859,8 +925,7 @@ public class VDP {
                     prepForFrame(frameNumber, presentationSector);
                     _mjpegWriter.writeFrame(_buffer.getBuffer(), 0, _buffer.size());
                 } catch (IOException ex) {
-                    throw new LoggedFailure(_log, Level.SEVERE,
-                            I.IO_WRITING_TO_FILE_ERROR_NAME(_writer.getFile().toString()), ex);
+                    throw new IOWritingException(ex, _mjpegWriter.getFile());
                 }
                 return;
                 // kinda icky way to do this
@@ -878,26 +943,27 @@ public class VDP {
             error(err, frameNumber, presentationSector);
         }
 
+        @Override
         public void error(@Nonnull ILocalizedMessage errMsg, @CheckForNull FormattedFrameNumber frameNumber,
-                          @Nonnull Fraction presentationSector) throws LoggedFailure {
+                          @Nonnull Fraction presentationSector) throws IOWritingException {
             if (_mjpegWriter == null)
                 throw new IllegalStateException("AVI not open.");
             try {
                 prepForFrame(frameNumber, presentationSector);
                 _mjpegWriter.writeFrame(makeErrorImage(errMsg, _iWidth, _iHeight));
             } catch (IOException ex) {
-                throw new LoggedFailure(_log, Level.SEVERE,
-                        I.IO_WRITING_TO_FILE_ERROR_NAME(_writer.getFile().toString()), ex);
+                throw new IOWritingException(ex, _writer.getFile());
             }
         }
 
+        @Override
         public @Nonnull ILocalizedLogger getLog() {
             return _log;
         }
 
     }
 
-    
+
     /** Draw the error onto a blank image. */
     private static @Nonnull BufferedImage makeErrorImage(@Nonnull ILocalizedMessage sErr, int iWidth, int iHeight) {
         BufferedImage bi = new BufferedImage(iWidth, iHeight, BufferedImage.TYPE_INT_RGB);
@@ -974,6 +1040,6 @@ public class VDP {
             else
                 return I.UNABLE_TO_DETERMINE_FRAME_TYPE_FRM(frameNumber.getUnpaddedValue());
         }
-        
+
     }
 }

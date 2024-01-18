@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -65,11 +65,11 @@ public class Ac3Demuxer {
         if (chunk.getChannel() != _iChannel)
             return Ac3AddResult.WrongChannel;
 
-        boolean blnIsPartOfFrame =
-        chunk.getWidth() == _iWidth && chunk.getHeight() == _iHeight &&
-        _bldr.addSectorIfPartOfFrame(chunk,
-                                     chunk.getChunkNumber(), chunk.getChunksInFrame(),
-                                     chunk.getSectorNumber(), chunk.getInvertedFrameNumber());
+        boolean blnIsPartOfFrame = chunk.getWidth() == _iWidth &&
+                                   chunk.getHeight() == _iHeight &&
+                                   _bldr.addSectorIfPartOfFrame(chunk,
+                                         chunk.getChunkNumber(), chunk.getChunksInFrame(),
+                                         chunk.getSectorNumber(), chunk.getInvertedFrameNumber());
         if (!blnIsPartOfFrame)
             return Ac3AddResult.WrongFormat;
 

@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2013-2019  Michael Sabin
+ * Copyright (C) 2013-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -55,10 +55,10 @@ import jpsxdec.i18n.FeedbackStream;
 import jpsxdec.i18n.I;
 import jpsxdec.i18n.ILocalizedMessage;
 import jpsxdec.i18n.UnlocalizedMessage;
-import jpsxdec.i18n.exception.LoggedFailure;
 import jpsxdec.i18n.log.ILocalizedLogger;
 import jpsxdec.i18n.log.UserFriendlyLogger;
 import jpsxdec.modules.video.save.AutowireVDP;
+import jpsxdec.modules.video.save.IOWritingException;
 import jpsxdec.modules.video.save.MdecDecodeQuality;
 import jpsxdec.modules.video.save.VDP;
 import jpsxdec.modules.video.save.VideoFileNameFormatter;
@@ -75,19 +75,20 @@ import jpsxdec.util.Fraction;
 import jpsxdec.util.IO;
 import jpsxdec.util.Misc;
 
-
+/** Handle {@code -static} option. */
 class Command_Static extends Command {
 
     public Command_Static() {
         super("-static");
     }
 
-    private static enum StaticType {
+    private enum StaticType {
         bs, mdec, tim
     }
     @Nonnull
     private StaticType _eStaticType;
 
+    @Override
     protected @CheckForNull ILocalizedMessage validate(@Nonnull String s) {
         for (StaticType type : StaticType.values()) {
             if (s.equalsIgnoreCase(type.name())) {
@@ -98,13 +99,14 @@ class Command_Static extends Command {
         return I.CMD_INVALID_VALUE_FOR_CMD(s, "-static");
     }
 
+    @Override
     public void execute(@Nonnull ArgParser ap) throws CommandLineException {
         File inFile = getInFile();
         switch (_eStaticType) {
             case bs:
             case mdec:
                 BooleanHolder debug = ap.addBoolOption("-debug");
-                StringHolder dimentions = ap.addStringOption("-dim");
+                StringHolder dimensions = ap.addStringOption("-dim");
                 StringHolder quality = ap.addStringOption("-quality","-q");
                 StringHolder outFormat = ap.addStringOption("-fmt");
                 StringHolder upsample = ap.addStringOption("-up");
@@ -113,14 +115,14 @@ class Command_Static extends Command {
                 //......
 
                 // verify dimensions
-                if (dimentions.value == null) {
-                    throw new CommandLineException(I.CMD_DIM_OPTION_REQURIED());
+                if (dimensions.value == null) {
+                    throw new CommandLineException(I.CMD_DIM_OPTION_REQUIRED());
                 }
                 final int iWidth;
                 final int iHeight;
-                int[] aiDim = Misc.splitInt(dimentions.value, "x");
+                int[] aiDim = Misc.splitInt(dimensions.value, "x");
                 if (aiDim == null || aiDim.length != 2)
-                    throw new CommandLineException(I.CMD_INVALID_VALUE_FOR_CMD(dimentions.value, "-dim"));
+                    throw new CommandLineException(I.CMD_INVALID_VALUE_FOR_CMD(dimensions.value, "-dim"));
                 iWidth = aiDim[0];
                 iHeight = aiDim[1];
 
@@ -164,6 +166,7 @@ class Command_Static extends Command {
 
                 // build pipeline
                 AutowireVDP pipeline = setupPipeline(iWidth, iHeight, outputFormat, sFileBaseName, quality.value, upsample.value, log);
+                pipeline.setFileListener(fileAndIssueListener);
 
                 // read input file
                 byte[] abFileData;
@@ -175,26 +178,25 @@ class Command_Static extends Command {
                     throw new CommandLineException(I.IO_READING_FILE_ERROR_NAME(inFile.toString()), ex);
                 }
 
-                Fraction dummyFrameNumber = new Fraction(-1);
                 try {
                     if (_eStaticType == StaticType.bs) {
-                        pipeline.setMap(new VDP.Bitstream2Mdec());
+                        pipeline.setBitstream2Mdec(new VDP.Bitstream2Mdec());
                         pipeline.autowire();
                         // finally convert the file
-                        pipeline.getBitstreamListener().bitstream(abFileData, abFileData.length, null, dummyFrameNumber);
+                        pipeline.getBitstreamListener().bitstream(abFileData, abFileData.length, null, Fraction.ZERO);
                     } else {
                         pipeline.autowire();
                         // finally convert the file
-                        pipeline.getMdecListener().mdec(new MdecInputStreamReader(abFileData), null, dummyFrameNumber);
+                        pipeline.getMdecListener().mdec(new MdecInputStreamReader(abFileData), null, Fraction.ZERO);
                     }
 
                     if (!fileAndIssueListener.blnHadIssue) {
-                        _fbs.println(I.CMD_FRAME_CONVERT_OK()); 
+                        _fbs.println(I.CMD_FRAME_CONVERT_OK());
                     }
                     _fbs.println(I.CMD_NUM_FILES_CREATED(fileAndIssueListener.genFiles.size()));
-                    
-                } catch (LoggedFailure ex) {
-                    _fbs.printErr(ex.getSourceMessage());
+
+                } catch (IOWritingException ex) {
+                    _fbs.printErr(I.IO_WRITING_TO_FILE_ERROR_NAME(ex.getOutFile().toString()));
                 }
                 return;
             case tim:
@@ -211,14 +213,17 @@ class Command_Static extends Command {
         public FileAndIssueListener(FeedbackStream fbs) {
             this.fbs = fbs;
         }
-        public void fileGenerated(File f) {
+        @Override
+        public void fileGenerated(@Nonnull File f) {
             genFiles.add(f);
         }
-        public void onWarn(ILocalizedMessage msg) {
+        @Override
+        public void onWarn(@Nonnull ILocalizedMessage msg) {
             fbs.printlnWarn(msg);
             blnHadIssue = true;
         }
-        public void onErr(ILocalizedMessage msg) {
+        @Override
+        public void onErr(@Nonnull ILocalizedMessage msg) {
             fbs.printlnErr(msg);
             blnHadIssue = true;
         }
@@ -232,14 +237,14 @@ class Command_Static extends Command {
             throws CommandLineException
     {
         VideoFileNameFormatter formatter = new VideoFileNameFormatter(null, sOutputBaseName, outputFormat, iWidth, iHeight);
-        AutowireVDP pipline = new AutowireVDP();
+        AutowireVDP pipeline = new AutowireVDP();
 
         switch (outputFormat) {
             case IMGSEQ_MDEC:
-                pipline.setMap(new VDP.Mdec2File(formatter, iWidth, iHeight, log));
+                pipeline.setMdec2File(new VDP.Mdec2File(formatter, iWidth, iHeight, log));
                 break;
             case IMGSEQ_JPG:
-                pipline.setMap(new VDP.Mdec2Jpeg(formatter, iWidth, iHeight, log));
+                pipeline.setMdec2File(new VDP.Mdec2Jpeg(formatter, iWidth, iHeight, log));
                 break;
 
             case IMGSEQ_BMP:
@@ -266,9 +271,8 @@ class Command_Static extends Command {
                         ((MdecDecoder_double) vidDecoder).setUpsampler(up);
                     }
 
-                    pipline.setMap(new VDP.Mdec2Decoded(vidDecoder, log));
-
-                    pipline.setMap(new VDP.Decoded2JavaImage(formatter, outputFormat.getImgFmt(), iWidth, iHeight, log));
+                    pipeline.setMdec2Decoded(new VDP.Mdec2Decoded(vidDecoder, log));
+                    pipeline.setDecoded2File(new VDP.Decoded2JavaImage(formatter, outputFormat.getImgFmt(), iWidth, iHeight, log));
                 break;
             default:
                 throw new RuntimeException();
@@ -276,7 +280,7 @@ class Command_Static extends Command {
 
         _fbs.println(I.CMD_SAVING_AS(formatter.format(null, log)));
 
-        return pipline;
+        return pipeline;
     }
 
     private void saveTim(@Nonnull File inFile) throws CommandLineException {

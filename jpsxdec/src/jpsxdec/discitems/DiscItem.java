@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -42,12 +42,12 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
-import jpsxdec.cdreaders.CdFileSectorReader;
+import jpsxdec.cdreaders.ICdSectorReader;
 import jpsxdec.i18n.I;
 import jpsxdec.i18n.ILocalizedMessage;
 import jpsxdec.i18n.exception.LocalizedDeserializationFail;
 import jpsxdec.modules.SectorClaimSystem;
-import jpsxdec.util.Misc;
+import jpsxdec.modules.SectorRange;
 
 
 /** Abstract superclass of all disc items. A "disc item" represents some media
@@ -69,7 +69,7 @@ public abstract class DiscItem implements Comparable<DiscItem> {
     private static final Logger LOG = Logger.getLogger(DiscItem.class.getName());
 
     /** Basic types of {@link DiscItem}s. */
-    public static enum GeneralType {
+    public enum GeneralType {
         Audio(I.ITEM_TYPE_AUDIO(), I.ITEM_TYPE_AUDIO_APPLY()),
         Video(I.ITEM_TYPE_VIDEO(), I.ITEM_TYPE_VIDEO_APPLY()),
         Image(I.ITEM_TYPE_IMAGE(), I.ITEM_TYPE_IMAGE_APPLY()),
@@ -82,7 +82,7 @@ public abstract class DiscItem implements Comparable<DiscItem> {
         @Nonnull
         private final ILocalizedMessage _localizedApplyToName;
 
-        private GeneralType(@Nonnull ILocalizedMessage name, 
+        private GeneralType(@Nonnull ILocalizedMessage name,
                             @Nonnull ILocalizedMessage applyToName)
         {
             _localizedName = name;
@@ -103,23 +103,23 @@ public abstract class DiscItem implements Comparable<DiscItem> {
     /** A {@link DiscItem} that starts part-way through a sector.
      * Useful when sorting multiple item that start in the same sector. */
     public interface IHasStartOffset {
-        public int getStartOffset();
+        int getStartOffset();
     }
 
     private final int _iStartSector;
     private final int _iEndSector;
     @Nonnull
-    private final CdFileSectorReader _cdReader;
+    private final ICdSectorReader _cdReader;
 
     /** Often sequential and hopefully unique number identifying this {@link DiscItem}. */
     private int _iIndex = -1;
     @CheckForNull
     private IndexId _indexId;
 
-    protected DiscItem(@Nonnull CdFileSectorReader cd, int iStartSector, int iEndSector) {
+    protected DiscItem(@Nonnull ICdSectorReader cd, int iStartSector, int iEndSector) {
         if (iStartSector < 0 || iStartSector > iEndSector)
             throw new IllegalArgumentException("Bad start/end sectors " + iStartSector+" - "+iEndSector);
-        if (iEndSector > cd.getSectorCount())
+        if (iEndSector >= cd.getSectorCount())
             LOG.log(Level.WARNING, "Disc item sectors {0,number,#}-{1,number,#} breaks CD end sector {2,number,#}",
                                    new Object[] {iStartSector, iEndSector, cd.getSectorCount()});
         _cdReader = cd;
@@ -128,7 +128,7 @@ public abstract class DiscItem implements Comparable<DiscItem> {
     }
 
     /** Deserializes the basic information about this {@link DiscItem}. */
-    protected DiscItem(@Nonnull CdFileSectorReader cd, @Nonnull SerializedDiscItem fields) 
+    protected DiscItem(@Nonnull ICdSectorReader cd, @Nonnull SerializedDiscItem fields)
             throws LocalizedDeserializationFail
     {
         _cdReader = cd;
@@ -155,7 +155,7 @@ public abstract class DiscItem implements Comparable<DiscItem> {
     /** String of the 'Type:' value in the serialization string. */
     abstract public @Nonnull String getSerializationTypeId();
 
-    public @Nonnull CdFileSectorReader getSourceCd() {
+    public @Nonnull ICdSectorReader getSourceCd() {
         return _cdReader;
     }
 
@@ -180,8 +180,8 @@ public abstract class DiscItem implements Comparable<DiscItem> {
             throw new IllegalStateException("IndexId should have been set before use.");
         return _indexId;
     }
-    
-    /** Returns how likely the supplied {@link DiscItem} 
+
+    /** Returns how likely the supplied {@link DiscItem}
      * is a child of this item. */
     public int getParentRating(@Nonnull DiscItem child) {
         return 0;
@@ -244,13 +244,17 @@ public abstract class DiscItem implements Comparable<DiscItem> {
         return _iEndSector;
     }
 
+    public @Nonnull SectorRange makeSectorRange() {
+        return new SectorRange(_iStartSector, _iEndSector);
+    }
+
     /** Returns the number of sectors that may hold data related to this disc item. */
     public int getSectorLength() {
         return _iEndSector - _iStartSector + 1;
     }
 
     public boolean notEntirelyInCd() {
-        return _iEndSector > _cdReader.getSectorCount();
+        return _iEndSector >= _cdReader.getSectorCount();
     }
 
     /** Returns the serialization. */
@@ -279,7 +283,7 @@ public abstract class DiscItem implements Comparable<DiscItem> {
         return suggestedBaseName;
     }
 
-    // [implements Comparable]
+    @Override
     public int compareTo(@Nonnull DiscItem other) {
         if (this == other) {
             // TreeMap implementation uses a wierd way to verify
@@ -287,20 +291,20 @@ public abstract class DiscItem implements Comparable<DiscItem> {
             return 0;
         }
 
-        int iStartSectorDiff = Misc.intCompare(getStartSector(), other.getStartSector());
+        int iStartSectorDiff = Integer.compare(getStartSector(), other.getStartSector());
         if (iStartSectorDiff != 0) {
             return iStartSectorDiff;
         } else if (this instanceof IHasStartOffset && other instanceof IHasStartOffset) {
             IHasStartOffset thisWithOffset = (IHasStartOffset) this;
             IHasStartOffset otherWithOffset = (IHasStartOffset) other;
-            int iOffsetDiff = Misc.intCompare(thisWithOffset.getStartOffset(), otherWithOffset.getStartOffset());
+            int iOffsetDiff = Integer.compare(thisWithOffset.getStartOffset(), otherWithOffset.getStartOffset());
             if (iOffsetDiff != 0)
                 return iOffsetDiff;
         }
         // at this point both items start on the same sector, and the same offset if applicable
-        
+
         // have more encompassing disc items come first (result is much cleaner)
-        int iEndSectorDiff = Misc.intCompare(other.getEndSector(), getEndSector());
+        int iEndSectorDiff = Integer.compare(other.getEndSector(), getEndSector());
         if (iEndSectorDiff != 0) {
             return iEndSectorDiff;
         } else {
@@ -308,7 +312,7 @@ public abstract class DiscItem implements Comparable<DiscItem> {
             Logger.getLogger(getClass().getName()).log(Level.WARNING,
                                                        "Identical item position {0} == {1}",
                                                        new Object[]{other, this});
-            return Misc.intCompare(other.getClass().hashCode(), getClass().hashCode());
+            return Integer.compare(other.getClass().hashCode(), getClass().hashCode());
         }
     }
 

@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2014-2019  Michael Sabin
+ * Copyright (C) 2014-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -40,10 +40,11 @@ package jpsxdec.modules.video.sectorbased;
 import javax.annotation.Nonnull;
 import jpsxdec.i18n.exception.LocalizedIncompatibleException;
 import jpsxdec.i18n.log.ILocalizedLogger;
+import jpsxdec.psxvideo.bitstreams.BitStreamAnalysis;
 
 /** The vast majority of video sector formats have frame number. */
 public interface IVideoSectorWithFrameNumber extends ISelfDemuxingVideoSector {
-    
+
     /** Height of the frame in pixels. */
     int getHeight();
 
@@ -72,12 +73,12 @@ public interface IVideoSectorWithFrameNumber extends ISelfDemuxingVideoSector {
      *  output buffer. */
     void copyDemuxPieceData(@Nonnull byte[] abOut, int iOutPos);
 
-    /** To be adapted with IReplaceableVideoSector
-     * @see jpsxdec.modules.sharedvideo.SectorBasedFrameReplace.IReplaceableVideoSector */
-    void replaceVideoSectorHeader(@Nonnull byte[] abNewDemuxData, int iNewUsedSize,
-                                  int iNewMdecCodeCount, @Nonnull byte[] abCurrentVidSectorHeader)
+    void replaceVideoSectorHeader(@Nonnull SectorBasedFrameAnalysis existingFrame,
+                                  @Nonnull BitStreamAnalysis newFrame,
+                                  @Nonnull byte[] abCurrentVidSectorHeader)
             throws LocalizedIncompatibleException;
 
+    @Override
     @Nonnull VideoSectorWithFrameNumberDemuxer createDemuxer(@Nonnull ILocalizedLogger log);
 
 }

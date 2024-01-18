@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2019  Michael Sabin
+ * Copyright (C) 2019-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -41,6 +41,7 @@ import java.util.Collection;
 import java.util.logging.Level;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
+import jpsxdec.discitems.Dimensions;
 import jpsxdec.discitems.DiscItem;
 import jpsxdec.discitems.SerializedDiscItem;
 import jpsxdec.i18n.I;
@@ -49,17 +50,15 @@ import jpsxdec.i18n.log.ILocalizedLogger;
 import jpsxdec.indexing.DiscIndex;
 import jpsxdec.indexing.DiscIndexer;
 import jpsxdec.modules.SectorClaimSystem;
-import jpsxdec.modules.video.Dimensions;
 import jpsxdec.modules.video.framenumber.HeaderFrameNumber;
 import jpsxdec.modules.video.framenumber.IndexSectorFrameNumber;
 
-
-public class DiscIndexerPolicenauts extends DiscIndexer implements SectorClaimToPolicenauts.Listener {
+/** @see SPacket */
+public class DiscIndexerPolicenauts extends DiscIndexer implements PolicenautsSectorToPacket.Listener {
 
     @Override
     public void attachToSectorClaimer(@Nonnull SectorClaimSystem scs) {
-        SectorClaimToPolicenauts sc = scs.getClaimer(SectorClaimToPolicenauts.class);
-        sc.setListener(this);
+        PolicenautsSectorToPacket.attachToSectorClaimer(scs, this);
     }
 
     @Override
@@ -80,7 +79,7 @@ public class DiscIndexerPolicenauts extends DiscIndexer implements SectorClaimTo
         private HeaderFrameNumber.Format.Builder __headerFrameNumberBuilder;
         private int __iSoundUnitCount = 0;
 
-        public VidBuilder(@Nonnull SPacketData firstPacket, Dimensions dims) {
+        public VidBuilder(@Nonnull SPacketData firstPacket, @Nonnull Dimensions dims) {
             __dims = dims;
             __iStartKlbsStartSector = firstPacket.getKlbsStartSectorNum();
             __iLastKlbsEndSector = firstPacket.getKlbsEndSectorNum();
@@ -110,7 +109,7 @@ public class DiscIndexerPolicenauts extends DiscIndexer implements SectorClaimTo
                 log.log(Level.WARNING, I.POLICENAUTS_DATA_CORRUPTION());
                 return;
             }
-            DiscItemPolicenauts di = new DiscItemPolicenauts(getCd(), 
+            DiscItemPolicenauts di = new DiscItemPolicenauts(getCd(),
                     __iStartKlbsStartSector, __iLastKlbsEndSector, __dims,
                     __indexSectorFrameNumberBuilder.makeFormat(),
                     __headerFrameNumberBuilder.makeFormat(),
@@ -157,7 +156,10 @@ public class DiscIndexerPolicenauts extends DiscIndexer implements SectorClaimTo
     @Override
     public void listPostProcessing(@Nonnull Collection<DiscItem> allItems) {
     }
-
+    @Override
+    public boolean filterChild(DiscItem parent, DiscItem child) {
+        return false;
+    }
     @Override
     public void indexGenerated(@Nonnull DiscIndex index) {
     }

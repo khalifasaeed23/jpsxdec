@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -48,27 +48,30 @@ import java.util.logging.Level;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 import javax.imageio.ImageIO;
-import jpsxdec.cdreaders.CdFileSectorReader;
+import jpsxdec.cdreaders.DiscPatcher;
 import jpsxdec.formats.RgbIntImage;
 import jpsxdec.i18n.I;
 import jpsxdec.i18n.UnlocalizedMessage;
 import jpsxdec.i18n.exception.LocalizedDeserializationFail;
-import jpsxdec.i18n.exception.LocalizedIncompatibleException;
 import jpsxdec.i18n.exception.LoggedFailure;
 import jpsxdec.i18n.log.ILocalizedLogger;
-import jpsxdec.modules.video.IDemuxedFrame;
+import jpsxdec.modules.aconcagua.BitStreamUncompressor_Aconcagua;
 import jpsxdec.modules.video.framenumber.FrameLookup;
+import jpsxdec.modules.video.sectorbased.ISectorBasedDemuxedFrame;
+import jpsxdec.modules.video.sectorbased.SectorBasedFrameAnalysis;
+import jpsxdec.psxvideo.bitstreams.BitStreamAnalysis;
 import jpsxdec.psxvideo.bitstreams.BitStreamCompressor;
-import jpsxdec.psxvideo.bitstreams.BitStreamUncompressor;
+import jpsxdec.psxvideo.bitstreams.IBitStreamUncompressor;
 import jpsxdec.psxvideo.encode.MdecEncoder;
-import jpsxdec.psxvideo.encode.ParsedMdecImage;
 import jpsxdec.psxvideo.encode.PsxYCbCrImage;
 import jpsxdec.psxvideo.mdec.Ac0Checker;
 import jpsxdec.psxvideo.mdec.Calc;
 import jpsxdec.psxvideo.mdec.MdecDecoder_double;
 import jpsxdec.psxvideo.mdec.MdecException;
-import jpsxdec.psxvideo.mdec.idct.StephensIDCT;
+import jpsxdec.psxvideo.mdec.ParsedMdecImage;
+import jpsxdec.psxvideo.mdec.idct.PsxMdecIDCT_double;
 import jpsxdec.util.BinaryDataNotRecognized;
+import jpsxdec.util.IncompatibleException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
@@ -167,7 +170,7 @@ public class ReplaceFramePartial extends ReplaceFrameFull {
     }
 
     @Override
-    public void replace(@Nonnull IDemuxedFrame frame, @Nonnull CdFileSectorReader cd,
+    public void replace(@Nonnull ISectorBasedDemuxedFrame frame, @Nonnull DiscPatcher patcher,
                         @Nonnull ILocalizedLogger log)
             throws LoggedFailure
     {
@@ -181,72 +184,84 @@ public class ReplaceFramePartial extends ReplaceFrameFull {
                     newImg.getWidth(), newImg.getHeight(), frame.getWidth(), frame.getHeight()));
 
         // 1. Parse original image
-        byte[] abExistingFrame = frame.copyDemuxData();
-        BitStreamUncompressor bsu;
+        SectorBasedFrameAnalysis existingFrame;
         try {
-            bsu = BitStreamUncompressor.identifyUncompressor(abExistingFrame);
+            existingFrame = SectorBasedFrameAnalysis.create(frame);
         } catch (BinaryDataNotRecognized ex) {
             throw new LoggedFailure(log, Level.SEVERE, I.UNABLE_TO_DETERMINE_FRAME_TYPE_FRM(getFrameLookup().toString()), ex);
+        } catch (MdecException.ReadCorruption ex) {
+            throw new LoggedFailure(log, Level.SEVERE, I.FRAME_NUM_CORRUPTED(getFrameLookup().toString()), ex);
+        } catch (MdecException.EndOfStream ex) {
+            throw new LoggedFailure(log, Level.SEVERE, I.FRAME_NUM_INCOMPLETE(getFrameLookup().toString()), ex);
         }
 
-        MdecDecoder_double decoder = new MdecDecoder_double(new StephensIDCT(),
-                                                            WIDTH, HEIGHT);
+        MdecDecoder_double decoder = new MdecDecoder_double(new PsxMdecIDCT_double(), WIDTH, HEIGHT);
+        ParsedMdecImage optimizedOrig;
         try {
-            ParsedMdecImage parsedOrig = new ParsedMdecImage(Ac0Checker.wrapWithChecker(bsu, true), WIDTH, HEIGHT);
+            // remove any redundant AC=0 codes to save more space for the replaced parts
+            optimizedOrig = new ParsedMdecImage(Ac0Checker.wrapWithChecker(existingFrame.makeNewStream(), true), WIDTH, HEIGHT);
 
             // 2. convert both to RGB
             // TODO: use best quality to decode, but same as encode
-            decoder.decode(parsedOrig.getStream());
-
-            RgbIntImage rgb = new RgbIntImage(WIDTH, HEIGHT);
-            decoder.readDecodedRgb(rgb.getWidth(), rgb.getHeight(), rgb.getData());
-            BufferedImage origImg = rgb.toBufferedImage();
-
-            // 3. compare the macroblocks, considering the tolerance
-            //    and filter any that don't have any differences within
-            //    the bounding box and mask
-            ArrayList<Point> diffMacblks = findDiffMacroblocks(origImg, newImg, log);
-            if (diffMacblks.isEmpty()) {
-                log.log(Level.INFO, I.CMD_NO_DIFFERENCE_SKIPPING(getFrameLookup().toString()));
-                return;
-            } else if (diffMacblks.size() == Calc.macroblocks(WIDTH, HEIGHT)) {
-                log.log(Level.WARNING, I.CMD_ENTIRE_FRAME_DIFFERENT());
-            }
-            printDiffMacroBlocks(diffMacblks, Calc.macroblockDim(WIDTH), Calc.macroblockDim(HEIGHT), log);
-
-            // 4. Encode and compress
-            PsxYCbCrImage newYuvImg = new PsxYCbCrImage(newImg);
-            MdecEncoder encoder = new MdecEncoder(parsedOrig, newYuvImg, diffMacblks);
-            BitStreamCompressor comp = bsu.makeCompressor();
-
-            byte[] abNewFrame;
-            try {
-                abNewFrame = comp.compressPartial(abExistingFrame, getFrameLookup().toString(), encoder, log);
-            } catch (LocalizedIncompatibleException ex) {
-                throw new LoggedFailure(log, Level.SEVERE, ex.getSourceMessage(), ex);
-            }
-            if (abNewFrame == null)
-                throw new LoggedFailure(log, Level.SEVERE,
-                        I.CMD_UNABLE_TO_COMPRESS_FRAME_SMALL_ENOUGH(getFrameLookup().toString(), frame.getDemuxSize()));
-
-            // 5. replace the frame
-            frame.writeToSectors(abNewFrame, abNewFrame.length, comp.getMdecCodesFromLastCompress(), cd, log);
-
-        } catch (MdecException.EndOfStream ex) {
-            // existing frame is incomplete
-            throw new LoggedFailure(log, Level.SEVERE, I.FRAME_NUM_INCOMPLETE(getFrameLookup().toString()), ex);
-        } catch (MdecException.ReadCorruption ex) {
-            // existing frame is corrupted
-            throw new LoggedFailure(log, Level.SEVERE, I.FRAME_NUM_CORRUPTED(getFrameLookup().toString()), ex);
+            decoder.decode(optimizedOrig.getStream());
+        } catch (MdecException.EndOfStream | MdecException.ReadCorruption ex) {
+            throw new RuntimeException("Should have been detected already", ex);
         }
-        
+
+        RgbIntImage rgb = new RgbIntImage(WIDTH, HEIGHT);
+        decoder.readDecodedRgb(rgb.getWidth(), rgb.getHeight(), rgb.getData());
+        BufferedImage origImg = rgb.toBufferedImage();
+
+        // 3. compare the macroblocks, considering the tolerance
+        //    and filter any that don't have any differences within
+        //    the bounding box and mask
+        ArrayList<Point> diffMacblks = findDiffMacroblocks(origImg, newImg, log);
+        if (diffMacblks.isEmpty()) {
+            log.log(Level.INFO, I.CMD_NO_DIFFERENCE_SKIPPING(getFrameLookup().toString()));
+            return;
+        } else if (diffMacblks.size() == Calc.macroblocks(WIDTH, HEIGHT)) {
+            log.log(Level.WARNING, I.CMD_ENTIRE_FRAME_DIFFERENT());
+        }
+        printDiffMacroBlocks(diffMacblks, Calc.macroblockDim(WIDTH), Calc.macroblockDim(HEIGHT), log);
+
+        // 4. Encode and compress
+        PsxYCbCrImage newYuvImg = new PsxYCbCrImage(newImg);
+        MdecEncoder encoder = new MdecEncoder(optimizedOrig, newYuvImg, diffMacblks);
+        BitStreamCompressor comp = existingFrame.makeBitStreamCompressor();
+
+        byte[] abNewFrame;
+        try {
+            abNewFrame = comp.compressPartial(frame.getDemuxSize(), getFrameLookup().toString(), encoder, log);
+        } catch (MdecException.EndOfStream | MdecException.ReadCorruption ex) {
+            throw new RuntimeException("We made the MdecEncoder, this shouldn't happen", ex);
+        } catch (IncompatibleException ex) {
+            throw new RuntimeException("The compressor was created from the uncompressor, so this should never happen", ex);
+        }
+        if (abNewFrame == null)
+            throw new LoggedFailure(log, Level.SEVERE,
+                    I.CMD_UNABLE_TO_COMPRESS_FRAME_SMALL_ENOUGH(getFrameLookup().toString(), frame.getDemuxSize()));
+
+        BitStreamAnalysis newFrame;
+        try {
+            IBitStreamUncompressor origBs = existingFrame.getCompletedBitStream();
+            if (origBs instanceof BitStreamUncompressor_Aconcagua) {
+                newFrame = new BitStreamAnalysis(abNewFrame, (((BitStreamUncompressor_Aconcagua) origBs).makeFor(abNewFrame)), WIDTH, HEIGHT);
+            } else {
+                newFrame = new BitStreamAnalysis(abNewFrame, WIDTH, HEIGHT);
+            }
+        } catch (BinaryDataNotRecognized | MdecException.EndOfStream | MdecException.ReadCorruption ex) {
+            throw new RuntimeException("Shouldn't happen", ex);
+        }
+
+        // 5. replace the frame
+        frame.writeToSectors(existingFrame, newFrame, patcher, log);
     }
 
     private void printDiffMacroBlocks(@Nonnull ArrayList<Point> diffMacblks,
                                       int iMbWidth, int iMbHeight,
                                       @Nonnull ILocalizedLogger log)
     {
-        log.log(Level.INFO, I.CMD_REPLACE_FOUND_DIFFERENT_MACRO_BLOCKS(diffMacblks.size()));
+        log.log(Level.INFO, I.CMD_REPLACE_FOUND_DIFFERENT_MACRO_BLOCKS(diffMacblks.size(), Calc.macroblocks(iMbWidth, iMbHeight)));
 
         Point p = new Point();
         for (int iMbY = 0; iMbY < iMbHeight; iMbY++) {
@@ -307,7 +322,7 @@ public class ReplaceFramePartial extends ReplaceFrameFull {
                                             imageFile.toString()));
         return bi;
     }
-    
+
     private boolean blockIsDifferent(@Nonnull Point macblk,
                                      @Nonnull BufferedImage bi1,
                                      @Nonnull BufferedImage bi2,

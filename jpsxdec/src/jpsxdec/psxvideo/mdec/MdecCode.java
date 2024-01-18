@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -37,8 +37,9 @@
 
 package jpsxdec.psxvideo.mdec;
 
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.annotation.Nonnull;
-import jpsxdec.util.Misc;
 
 
 /** Represents a 16-bit code readable by the PlayStation MDEC chip.
@@ -47,9 +48,11 @@ import jpsxdec.util.Misc;
  *  the "direct current" (DC) coefficient.
  *  If the MDEC code is not the first of a block, and it is
  *  not a {@link #MDEC_END_OF_DATA} code (0xFE00), then the top 6 bits indicate
- *  the number of zeros preceeding an "alternating current" (AC) coefficient,
+ *  the number of zeros preceding an "alternating current" (AC) coefficient,
  *  with the bottom 10 bits indicating a (usually) non-zero AC coefficient.  */
 public class MdecCode implements Comparable<MdecCode> {
+
+    private static final Logger LOG = Logger.getLogger(MdecCode.class.getName());
 
     /** 16-bit MDEC code indicating the end of a block.
      * The equivalent MDEC value is (63, -512). */
@@ -62,12 +65,12 @@ public class MdecCode implements Comparable<MdecCode> {
     /** Most significant 6 bits of the 16-bit MDEC code.
      * Holds either a block's quantization scale or the
      * count of zero AC coefficients leading up to a non-zero
-     * AC coefficient. */
+     * AC coefficient. Unsigned. */
     private int _iTop6Bits;
 
     /** Least significant 10 bits of the 16-bit MDEC code.
      * Holds either the DC coefficient of a block or
-     * a non-zero AC coefficient. */
+     * a non-zero AC coefficient. Signed. */
     private int _iBottom10Bits;
 
     /** Initializes to (0, 0). */
@@ -125,13 +128,13 @@ public class MdecCode implements Comparable<MdecCode> {
     public void set(int iMdecWord) {
         _iTop6Bits = ((iMdecWord >> 10) & 63);
         _iBottom10Bits = (iMdecWord & 0x3FF);
-        if ((_iBottom10Bits & 0x200) == 0x200) { // is it negitive?
+        if ((_iBottom10Bits & 0x200) == 0x200) { // is it negative?
             _iBottom10Bits -= 0x400;
         }
     }
 
     /** Combines the top 6 bits and bottom 10 bits into an unsigned 16 bit value. */
-    public int toMdecWord() {
+    public int toMdecShort() {
         if (isEOD())
             return MDEC_END_OF_DATA;
         if (!validTop(_iTop6Bits))
@@ -150,8 +153,7 @@ public class MdecCode implements Comparable<MdecCode> {
         return this;
     }
 
-    /** Returns if this MDEC code is setFrom to the special "End of Data" (EOD)
- value.
+    /** Returns if this MDEC code is setFrom to the special "End of Data" (EOD) value.
      * @see MdecInputStream#MDEC_END_OF_DATA */
     public boolean isEOD() {
         return (_iTop6Bits == MDEC_END_OF_DATA_TOP6 &&
@@ -167,11 +169,17 @@ public class MdecCode implements Comparable<MdecCode> {
 
     /** Checks if the top 6 bits of an MDEC code are valid. */
     private static boolean validTop(int iTop6Bits) {
-        return iTop6Bits >= 0 && iTop6Bits <= 63;
+        boolean blnValid = iTop6Bits >= 0 && iTop6Bits <= 63;
+        if (!blnValid)
+            LOG.log(Level.FINE, "Invalid top 6 bit value {0,number,#}", iTop6Bits);
+        return blnValid;
     }
     /** Checks if the bottom 10 bits of an MDEC code are valid. */
     private static boolean validBottom(int iBottom10Bits) {
-        return iBottom10Bits >= -512 && iBottom10Bits <= 511;
+        boolean blnValid = iBottom10Bits >= -512 && iBottom10Bits <= 511;
+        if (!blnValid)
+            LOG.log(Level.FINE, "Invalid bottom 10 bit value {0,number,#}", iBottom10Bits);
+        return blnValid;
     }
 
     public @Nonnull MdecCode copy() {
@@ -180,18 +188,19 @@ public class MdecCode implements Comparable<MdecCode> {
 
     @Override
     public String toString() {
-        String s = String.format("%04x (%d, %d)", toMdecWord(), _iTop6Bits, _iBottom10Bits);
+        String s = String.format("%04x (%d, %d)", toMdecShort(), _iTop6Bits, _iBottom10Bits);
         if (isEOD())
             return s + " EOD";
         else
             return s;
     }
 
+    @Override
     public int compareTo(MdecCode o) {
-        int i = Misc.intCompare(_iTop6Bits, o._iTop6Bits);
+        int i = Integer.compare(_iTop6Bits, o._iTop6Bits);
         if (i != 0)
             return i;
-        return Misc.intCompare(_iBottom10Bits, o._iBottom10Bits);
+        return Integer.compare(_iBottom10Bits, o._iBottom10Bits);
     }
 
     @Override

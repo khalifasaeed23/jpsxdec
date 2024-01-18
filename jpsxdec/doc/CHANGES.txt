@@ -1,3 +1,81 @@
+#### jPSXdec version 2.0 ####
+
+Summary of changes from v1.00 to 2.0
++ Added support for several more games
++ Improved content detection
++ Improved frame rate detection
++ Improved error detection and handling
++ Fixed bugs in replacing content and improved quality of encoded data
++ Requires Java 8 or higher
+
+--------------------------------------------------------------------------------
+v2.0 rev4335 (16 Oct 2023)
+    - Now requires Java 8 or higher
+    - Added support for ending video of Aconcagua - thanks to Martin Korth (no$psx developer)
+    - Added Aconcagua frame replacing support
+    - Optimized player and fixed minor memory leak
+    - Improved error detection and handling
+    - Added reference sources, specifications and documents
+    Known functional issues
+    - Translations (Spanish, Italian, machine translated Japanese) not updated since v1.00
+    - Frame rate detection still not as good as I want
+    - Real-time playback doesn't work for videos with a long audio delay
+    - Real-time playback stops early if audio ends before video ends
+    - Several games still not supported (see Github issues list)
+v1.06 (beta) rev4156 (19 Feb 2022)
+    - Support for videos in game "N Gauge Unten Kibun Game: Gatan Goton"
+    - Support for videos in more Electronic Arts games
+      (Github issue #40 "Andretti Racing - Sector scanning fails with error message"
+       by BloodRaynare)
+    - More accurate FPS detection, but indexing is slower, sometimes SIGNIFICANTLY slower
+    - Slightly improved video encoder quality and accuracy
+    - Command-line option "-a audio" now defaults to skipping audio associated
+      with videos, and added additional option "-vidaud" to include all audio
+      (see manual for details)
+      (Github issue #42 "No Commandline Argument for skipping audio from video files"
+       by Meerkov)
+    - A lot of bug fixes and improved error handling
+    Known issues
+    - Translations not updated since v1.00
+v1.05 (beta) rev4052 (14 Mar 2021)
+    - Support for Panekit - Infinitive Crafting Toy Case videos
+    - Support for Star Wars - Rebel Assault II - The Hidden Empire videos
+    - New video detection framework should identify even more unique video variations
+    - Added new full frame replace option: size-limit="original non-zero"
+      (see manual for details)
+      (Github issue #32 "Resident Evil 2 Video bug" by gledson999)
+    - Renamed command-line "-replacexa" option to "-replaceaudio" 
+      (see manual for details)
+    - Support for replacing audio streams used in several SquareSoft games
+      (Github issue #35 "How to replace modified video w audio in Chrono Cross?"
+       by saifhashmi210)
+    - Tiny quality improvement to video frame encoding
+    Bug fixes:
+    - Header frame number in image sequence file names is incorrect
+v1.04 rev3987 (10 Aug 2020)
+    - More robust XA audio detection
+    - Support for saving images as TIFF in Java 9+
+    - Ignore silent XA streams
+    - Improved Tim detection, including
+      Github issue #29 "TIM image not found in file" by gmarty
+    Bug fixes:
+    - Replacing XA with pcm audio doesn't actually make any changes,
+      broken since v0.99.8
+      (Github issue #30 '"-replacexa" command does not work' by ViToTiV)
+    - Real-time audio player doesn't play tiny clips
+    - Error when Tim image ends at sector boundary
+    - Sector type detection issues
+v1.03 rev3953 (15 Dec 2019)
+    Bug fixes:
+    - Some videos in EA games are still not detected
+v1.02 rev3950 (13 Dec 2019)
+    - Added support for Jackie Chan Stuntmaster videos
+    Bug fixes:
+    - Some videos in EA games are not detected
+v1.01 rev3936 (16 Nov 2019)
+    - Added support for Starblade Alpha and Galaxian 3 videos
+    Bug fixes:
+    - Replacing audio throws an exception
 v1.00 rev3921 (7 Sept 2019) The "ran out of version numbers" release
     Bug fixes:
     - Unsupported EA videos caused error
@@ -13,7 +91,7 @@ v1.00 rev3921 (7 Sept 2019) The "ran out of version numbers" release
     - Real-time playback stops early if audio ends before video ends
 v0.99.9 rev3898 (9 Aug 2019)
     - Added Italian translation (thanks Gianluigi "Infrid" Cusimano!)
-    - Updated Spanish translation (still many thanks to Víctor González, Sergi Medina!)
+    - Updated Spanish translation (still many thanks to VÃ­ctor GonzÃ¡lez, Sergi Medina!)
     - Minimum required Java version is now version 6
     - Updated to be compatible with Java version 9 and higher
     - Added support for ReBoot video (thanks to XBrav!)
@@ -33,7 +111,7 @@ v0.99.9 rev3898 (9 Aug 2019)
       some video players (primarily on Windows). Use a more reliable player 
       such as VLC media player.
 v0.99.8 rev3788 (21 Jan 2019)
-    - Updated Spanish translation (still many thanks to Víctor González, Sergi Medina)
+    - Updated Spanish translation (still many thanks to VÃ­ctor GonzÃ¡lez, Sergi Medina)
     - Updated Japanese translation (still using Google translate)
     - More thorough searching for content in input files (indexing is slower)
     - Index format changed, indexes need to be regenerated
@@ -88,7 +166,7 @@ v0.99.7 rev3397 (8 Jan 2017) The "road to v1.0" release
     - Improved internationalization
     - Introduced new bugs ;)
 v0.99.6 rev3146 (3 June 2016)
-    - Update Spanish translation (many thanks Víctor González, Sergi Medina)
+    - Update Spanish translation (many thanks VÃ­ctor GonzÃ¡lez, Sergi Medina)
     - Allow replacing FF7 frames with STRv2 frame format
     - Added support for Gran Turismo (1 and 2) videos
     - Simplified error/warning messages
@@ -120,7 +198,7 @@ v0.99.6 rev3146 (3 June 2016)
     - Some .iki frame rate detection is wrong
     - Audio + Video playback on Linux might be choppy or not display
 v0.99.5 rev3006 (5 Jul 2015)
-    - Spanish translation provided by Víctor González
+    - Spanish translation provided by VÃ­ctor GonzÃ¡lez
     - Index format changed, indexes need to be regenerated
     Bug fixes:
     - Indexing fails if XA sector channel = 255 (JPSXDEC-6 reported by truston)

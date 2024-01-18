@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -46,7 +46,6 @@ import java.util.logging.Logger;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 import jpsxdec.i18n.I;
-import jpsxdec.i18n.exception.LocalizedIncompatibleException;
 import jpsxdec.i18n.log.ILocalizedLogger;
 import jpsxdec.psxvideo.encode.MacroBlockEncoder;
 import jpsxdec.psxvideo.encode.MdecEncoder;
@@ -61,7 +60,7 @@ import jpsxdec.util.IO;
 import jpsxdec.util.IncompatibleException;
 import jpsxdec.util.Misc;
 
-/** A bitstream in the 'iki' format. 
+/** A bitstream in the 'iki' format.
  * These streams store the DC value and quantization scale of each
  * block in a lzss compressed header. Unlike other bitstreams,
  * this takes full advantage of the MDEC chip by allowing each block
@@ -71,92 +70,89 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
 
     private static final Logger LOG = Logger.getLogger(BitStreamUncompressor_Iki.class.getName());
 
+
+    public static @CheckForNull IkiHeader makeIkiHeader(@Nonnull byte[] abFrameData, int iDataSize) {
+        if (iDataSize < IkiHeader.SIZEOF) {
+            return null;
+        }
+
+        int iMdecCodeCount      = IO.readUInt16LE(abFrameData, 0);
+        int iMagic3800          = IO.readUInt16LE(abFrameData, 2);
+        int iWidth              = IO.readSInt16LE(abFrameData, 4);
+        int iHeight             = IO.readSInt16LE(abFrameData, 6);
+        int iCompressedDataSize = IO.readUInt16LE(abFrameData, 8);
+
+        if (iMdecCodeCount < 0 || iMagic3800 != 0x3800 ||
+            iWidth < 1 || iHeight < 1 ||
+            iCompressedDataSize < 2 || (iCompressedDataSize % 2 != 0))
+        {
+            return null;
+        }
+
+        if (iDataSize < IkiHeader.SIZEOF + iCompressedDataSize) {
+            LOG.log(Level.WARNING, "Incomplete iki frame header");
+            return null;
+        }
+
+        int iBlockCount = Calc.blocks(iWidth, iHeight);
+        int iQscaleDcLookupTableSize = iBlockCount * 2; // 2 bytes per block
+
+        byte[] abQscaleDcLookupTable;
+        try {
+            abQscaleDcLookupTable = ikiLzssUncompress(abFrameData, IkiHeader.SIZEOF, iQscaleDcLookupTableSize);
+        } catch (ArrayIndexOutOfBoundsException ex) {
+            return null;
+        }
+
+        return new IkiHeader(iMdecCodeCount, iWidth, iHeight, iCompressedDataSize, iBlockCount, abQscaleDcLookupTable);
+    }
+
     public static class IkiHeader {
-        private int _iMdecCodeCount = -1;
-        private int _iWidth = -1;
-        private int _iHeight = -1;
-        private int _iCompressedDataSize = -1;
 
-        private int _iBlockCount = -1;
+        public static final int SIZEOF = 10;
+
+        private final int _iMdecCodeCount;
+        private final int _iWidth;
+        private final int _iHeight;
+        private final int _iCompressedDataSize;
+
+        private final int _iBlockCount ;
         @Nonnull
-        private byte[] _abQscaleDcLookupTable = null;
+        private final byte[] _abQscaleDcLookupTable;
 
-        private final boolean _blnIsValid;
-        public IkiHeader(@Nonnull byte[] abFrameData, int iDataSize) {
-            if (iDataSize < 10) {
-                _blnIsValid = false;
-                return;
-            }
-
-            int iMdecCodeCount      = IO.readUInt16LE(abFrameData, 0);
-            int iMagic3800          = IO.readUInt16LE(abFrameData, 2);
-            int iWidth              = IO.readSInt16LE(abFrameData, 4);
-            int iHeight             = IO.readSInt16LE(abFrameData, 6);
-            int iCompressedDataSize = IO.readUInt16LE(abFrameData, 8);
-
-            if (iMdecCodeCount < 0 || iMagic3800 != 0x3800 || iWidth < 1 || iHeight < 1 || iCompressedDataSize < 1) {
-                _blnIsValid = false;
-                return;
-            }
-
-            if (iDataSize < 10 + iCompressedDataSize) {
-                LOG.log(Level.WARNING, "Incomplete iki frame header");
-                _blnIsValid = false;
-                return;
-            }
-
-            int iBlockCount = Calc.blocks(iWidth, iHeight);
-            int iQscaleDcLookupTableSize = iBlockCount * 2; // 2 bytes per block
-
-            byte[] abQscaleDcLookupTable = new byte[iQscaleDcLookupTableSize];
-
-            try {
-                ikiLzssUncompress(abFrameData, 10, abQscaleDcLookupTable, iQscaleDcLookupTableSize);
-            } catch (ArrayIndexOutOfBoundsException ex) {
-                _blnIsValid = false;
-                return;
-            }
-
+        protected IkiHeader(int iMdecCodeCount, int iWidth, int iHeight,
+                            int iCompressedDataSize, int iBlockCount,
+                            byte[] abQscaleDcLookupTable)
+        {
             _iMdecCodeCount = iMdecCodeCount;
             _iWidth = iWidth;
             _iHeight = iHeight;
             _iCompressedDataSize = iCompressedDataSize;
             _iBlockCount = iBlockCount;
             _abQscaleDcLookupTable = abQscaleDcLookupTable;
-
-            _blnIsValid = true;
         }
 
         public int getiMdecCodeCount() {
             return _iMdecCodeCount;
         }
 
-        public boolean isValid() {
-            return _blnIsValid;
-        }
-
         public int getWidth() {
-            if (!_blnIsValid) throw new IllegalStateException();
             return _iWidth;
         }
 
         public int getHeight() {
-            if (!_blnIsValid) throw new IllegalStateException();
             return _iHeight;
         }
 
         public int getCompressedDataSize() {
-            if (!_blnIsValid) throw new IllegalStateException();
             return _iCompressedDataSize;
         }
 
         public int getFrameBlockCount() {
-            if (!_blnIsValid) throw new IllegalStateException();
             return _iBlockCount;
         }
 
         public int getBlockQscaleDc(int iBlock) {
-            if (!_blnIsValid) throw new IllegalStateException();
             int b1 = _abQscaleDcLookupTable[iBlock] & 0xff;
             int b2 = _abQscaleDcLookupTable[iBlock+_iBlockCount] & 0xff;
             return (b1 << 8) | b2;
@@ -180,11 +176,12 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
     static @CheckForNull BitStreamUncompressor_Iki makeIkiNoThrow(@Nonnull byte[] abFrameData, int iDataSize)
             throws BinaryDataNotRecognized
     {
-        IkiHeader header = new IkiHeader(abFrameData, iDataSize);
-        if (!header.isValid())
+        IkiHeader header = makeIkiHeader(abFrameData, iDataSize);
+        if (header == null)
             return null;
 
-        ArrayBitReader bitReader = new ArrayBitReader(abFrameData, iDataSize, true, 10 + header.getCompressedDataSize());
+        ArrayBitReader bitReader = new ArrayBitReader(abFrameData, BitStreamUncompressor_STRv2.LITTLE_ENDIAN_SHORT_ORDER,
+                                                      IkiHeader.SIZEOF + header.getCompressedDataSize(), iDataSize);
 
         return new BitStreamUncompressor_Iki(header, bitReader);
     }
@@ -192,8 +189,8 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
     @Nonnull
     private final IkiHeader _header;
 
-    private BitStreamUncompressor_Iki(@Nonnull IkiHeader header,
-                                      @Nonnull ArrayBitReader bitReader)
+    protected BitStreamUncompressor_Iki(@Nonnull IkiHeader header,
+                                        @Nonnull ArrayBitReader bitReader)
     {
         super(bitReader, ZeroRunLengthAcLookup_STR.AC_VARIABLE_LENGTH_CODES_MPEG1,
               new QuantizationDcReader_Iki(header), BitStreamUncompressor_STRv2.AC_ESCAPE_CODE_STR,
@@ -201,7 +198,7 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
         _header = header;
     }
 
-    private static class QuantizationDcReader_Iki implements IQuantizationDc {
+    private static class QuantizationDcReader_Iki implements IQuantizationDcReader {
 
         @Nonnull
         private final BitStreamUncompressor_Iki.IkiHeader _header;
@@ -213,6 +210,7 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
         /** Read the quantization scale and DC coefficient from the iki lzss
          * compressed header. */
         /** Looks up the given block's quantization scale and DC coefficient. */
+        @Override
         public void readQuantizationScaleAndDc(@Nonnull ArrayBitReader bitReader, @Nonnull MdecContext context, @Nonnull MdecCode mdecCode)
                 throws MdecException.ReadCorruption, MdecException.EndOfStream
         {
@@ -222,6 +220,14 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
         }
     }
 
+    public int getWidth() {
+        return _header.getWidth();
+    }
+
+    public int getHeight() {
+        return _header.getHeight();
+    }
+
     /** .iki videos utilize yet another LZSS compression format that is
      * different from both FF7 and Lain.
      *<p>
@@ -229,12 +235,12 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
      * it may stop having stack trace or index.
      * This is due to a Sun VM optimization.
      * See VM option OmitStackTraceInFastThrow.
-     * @throws ArrayIndexOutOfBoundsException 
+     * @throws ArrayIndexOutOfBoundsException
      *              if there was an error uncompressing the data. */
-    private static void ikiLzssUncompress(@Nonnull byte[] abSrc, int iSrcPosition,
-                                          @Nonnull byte[] abDest, int iUncompressedSize)
+    protected static @Nonnull byte[] ikiLzssUncompress(@Nonnull byte[] abSrc, int iSrcPosition, int iUncompressedSize)
             throws ArrayIndexOutOfBoundsException
     {
+        byte[] abDest = new byte[iUncompressedSize];
         int iDestPosition = 0;
 
         while (iDestPosition < iUncompressedSize) {
@@ -282,6 +288,8 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
         }
         if (BitStreamDebugging.DEBUG)
             System.err.println("Src pos at end: " + iSrcPosition);
+
+        return abDest;
     }
 
     private static class IkiLzssCompressor {
@@ -301,7 +309,7 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
                 if (BitStreamDebugging.DEBUG)
                     _logger.format("[InPos: %d OutPos: %d]: bit %02x: ",
                                       out.size()+1+_buffer.size(), iSrcPos, 1 << _iFlagBit );
-                
+
                 int iLongestRunPos = 0;
                 int iLongestRunLen = 0;
 
@@ -342,7 +350,7 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
             }
 
         }
-        
+
         private void addRun(int iPosition, int iLength, int iSrcPos) {
             assert iPosition > 0;
             if (BitStreamDebugging.DEBUG) _logger.format("Copy %d bytes from %d(%d)", iLength, iSrcPos-iPosition, -iPosition).println();
@@ -367,7 +375,7 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
                 if (BitStreamDebugging.DEBUG) {
                     System.err.println("Flags " + Misc.bitsToString(_iFlags, 8));
                     _logger.flush();
-                    System.err.print(_baosLogger.toString());
+                    System.err.print(_baosLogger);
                     _baosLogger.reset();
                 }
                 out.write(_iFlags);
@@ -421,60 +429,46 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
 
     // =========================================================================
 
-    public static class BitStreamCompressor_Iki extends BitStreamUncompressor_STRv2.BitStreamCompressor_STRv2 {
-        
+    /** Note that IKI videos may only use the minimum number of videos sectors needed to hold the
+     * frame data. The remaining would be null or just full of zeroes. A proper encoder would
+     * take advantage of that and use those empty sectors if it helps improve the new frame quality. */
+    public static class BitStreamCompressor_Iki implements BitStreamCompressor, CommonBitStreamCompressing.BitStringEncoder {
+
         private final int _iWidth, _iHeight;
 
-        private BitStreamCompressor_Iki(int iWidth, int iHeight) {
-            super(Calc.macroblocks(iWidth, iHeight));
+        protected BitStreamCompressor_Iki(int iWidth, int iHeight) {
             _iWidth = iWidth;
             _iHeight = iHeight;
         }
 
-
         @Override
-        public @CheckForNull byte[] compressFull(@Nonnull byte[] abOriginal,
+        public @CheckForNull byte[] compressFull(int iMaxSize,
                                                  @Nonnull String sFrameDescription,
                                                  @Nonnull MdecEncoder encoder,
                                                  @Nonnull ILocalizedLogger log)
                 throws MdecException.EndOfStream, MdecException.ReadCorruption
         {
             // TODO: verify original bitstream is iki?
-            
+            // TODO: expand the video to use any empty video sectors
+            // Normal STR videos mark unused STR sectors as STR sectors.
+            // iki on the other hand marks unused video sectors and non-video
+            // so jpsxdec won't recognize them or use them.
+            // Recognizing them and using them could be a lot of work.
+
             // STEP 1: Find the minimum Qscale for all blocks that will fit frame
-            byte[] abNewDemux = null;
-            int iQscale;
-            for (iQscale = 1; iQscale < 64; iQscale++) {
-                log.log(Level.INFO, I.TRYING_QSCALE(iQscale));
-
-                int[] aiNewQscale = { iQscale, iQscale, iQscale,
-                                      iQscale, iQscale, iQscale };
-
-                for (MacroBlockEncoder macblk : encoder) {
-                    macblk.setToFullEncode(aiNewQscale);
-                }
-
-                try {
-                    abNewDemux = compress(encoder.getStream());
-                } catch (IncompatibleException ex) {
-                    throw new RuntimeException("The encoder should be compatible here", ex);
-                }
-                int iNewDemuxSize = abNewDemux.length;
-                if (iNewDemuxSize <= abOriginal.length) {
-                    log.log(Level.INFO, I.NEW_FRAME_FITS(sFrameDescription, iNewDemuxSize, abOriginal.length));
-                    break;
-                } else {
-                    log.log(Level.INFO, I.NEW_FRAME_DOES_NOT_FIT(sFrameDescription, iNewDemuxSize, abOriginal.length));
-                    abNewDemux = null;
-                }
+            byte[] abNewDemux = new byte[0];
+            try {
+                abNewDemux = CommonBitStreamCompressing.singleQscaleCompressFull(iMaxSize, sFrameDescription, encoder, this, log);
+            } catch (IncompatibleException ex) {
+                throw new RuntimeException("Iki shouldn't have any incompatibilities", ex);
             }
 
-            if (abNewDemux != null && abNewDemux.length < abOriginal.length && iQscale > 1) {
+            if (abNewDemux != null && abNewDemux.length < iMaxSize && _iLastQscale > 1) {
                 // STEP 2: decrease the qscale of blocks with high energy
                 //         until we run out of space
                 abNewDemux = reduceQscaleForHighEnergyMacroBlocks(
                              abNewDemux,
-                             abOriginal.length, sFrameDescription, iQscale-1, encoder, log);
+                             iMaxSize, sFrameDescription, _iLastQscale-1, encoder, log);
             }
 
             return abNewDemux;
@@ -497,6 +491,7 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
             final int iMbCenterX = encoder.getMacroBlockWidth()  / 2,
                       iMbCenterY = encoder.getMacroBlockHeight() / 2;
             TreeSet<MacroBlockEncoder> macblocks = new TreeSet<MacroBlockEncoder>(new Comparator<MacroBlockEncoder>() {
+                @Override
                 public int compare(MacroBlockEncoder o1, MacroBlockEncoder o2) {
                     // put macroblocks with bigger energy first
                     if (o1.getEnergy() > o2.getEnergy())
@@ -505,14 +500,14 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
                         return 1;
                     // calculate macroblock's distance from the center of the frame
                     int iDistX, iDistY;
-                    iDistX = o1.X - iMbCenterX;
-                    iDistY = o1.Y - iMbCenterY;
+                    iDistX = o1.getMacroBlockX() - iMbCenterX;
+                    iDistY = o1.getMacroBlockY() - iMbCenterY;
                     int o1dist = iDistX*iDistX + iDistY*iDistY;
-                    iDistX = o2.X - iMbCenterX;
-                    iDistY = o2.Y - iMbCenterY;
+                    iDistX = o2.getMacroBlockX() - iMbCenterX;
+                    iDistY = o2.getMacroBlockY() - iMbCenterY;
                     int o2dist = iDistX*iDistX + iDistY*iDistY;
                     // put those closer to the center first
-                    return Misc.intCompare(o1dist, o2dist);
+                    return Integer.compare(o1dist, o2dist);
                 }
             });
             for (MacroBlockEncoder macblk : encoder) {
@@ -523,14 +518,10 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
             int[] aiNewQscale = { iNewQscale, iNewQscale, iNewQscale,
                                   iNewQscale, iNewQscale, iNewQscale };
             for (MacroBlockEncoder macblk : macblocks) {
-                log.log(Level.INFO, I.IKI_REDUCING_QSCALE_OF_MB_TO_VAL(macblk.X, macblk.Y, iNewQscale));
+                log.log(Level.INFO, I.IKI_REDUCING_QSCALE_OF_MB_TO_VAL(macblk.getMacroBlockX(), macblk.getMacroBlockY(), iNewQscale));
                 macblk.setToFullEncode(aiNewQscale);
-                byte[] abNewDemux;
-                try {
-                    abNewDemux = compress(encoder.getStream());
-                } catch (IncompatibleException ex) {
-                    throw new RuntimeException("The encoder should be compatible here", ex);
-                }
+
+                byte[] abNewDemux = compress(encoder.getStream());
                 int iNewDemuxSize = abNewDemux.length;
                 if (iNewDemuxSize <= iOriginalLength) {
                     log.log(Level.INFO, I.NEW_FRAME_FITS(sFrameDescription, iNewDemuxSize, iOriginalLength));
@@ -543,56 +534,69 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
 
             return abLastGoodDemux;
         }
-        
+
         @Override
-        public @CheckForNull byte[] compressPartial(@Nonnull byte[] abOriginal,
+        public @CheckForNull byte[] compressPartial(int iMaxSize,
                                                     @Nonnull String sFrameDescription,
                                                     @Nonnull MdecEncoder encoder,
                                                     @Nonnull ILocalizedLogger log)
-                throws LocalizedIncompatibleException, MdecException.EndOfStream, MdecException.ReadCorruption
+                throws MdecException.EndOfStream, MdecException.ReadCorruption
         {
             // all blocks to replace are full replaced
-            return compressFull(abOriginal, sFrameDescription, encoder, log);
+            return compressFull(iMaxSize, sFrameDescription, encoder, log);
         }
-
-
 
         private final ByteArrayOutputStream _top8 = new ByteArrayOutputStream();
         private final ByteArrayOutputStream _bottom8 = new ByteArrayOutputStream();
-        private final MdecCode _currentBlockQscaleDc = new MdecCode();
         private final IkiLzssCompressor _lzs = new IkiLzssCompressor();
+        private int _iLastQscale;
 
         @Override
         public @Nonnull byte[] compress(@Nonnull MdecInputStream inStream)
-                throws IncompatibleException, MdecException.EndOfStream,
-                       MdecException.ReadCorruption
+                throws MdecException.EndOfStream, MdecException.ReadCorruption
         {
             _top8.reset();
             _bottom8.reset();
+
+            BitStreamWriter bitStream = new BitStreamWriter();
+
+            int iMdecCodeCount;
             try {
-                return super.compress(inStream);
-            } catch (MdecException.TooMuchEnergy ex) {
+                iMdecCodeCount = CommonBitStreamCompressing.compress(bitStream, inStream, this, Calc.macroblocks(_iWidth, _iHeight));
+            } catch (IncompatibleException | MdecException.TooMuchEnergy ex) {
                 throw new RuntimeException("This should not happen with Iki", ex);
             }
+
+            byte[] abBitstream = bitStream.toByteArray(BitStreamUncompressor_STRv2.LITTLE_ENDIAN_SHORT_ORDER);
+            byte[] abHeader = createHeader(iMdecCodeCount);
+
+            byte[] abReturn = CommonBitStreamCompressing.joinByteArrays(abHeader, abBitstream);
+
+            return abReturn;
         }
 
         @Override
-        protected void setBlockQscale(@Nonnull MdecBlock block, int iQscale) {
-            _currentBlockQscaleDc.setTop6Bits(iQscale);
-        }
-
-
-        @Override
-        protected @Nonnull String encodeDC(int iDC, @Nonnull MdecBlock block) {
-            _currentBlockQscaleDc.setBottom10Bits(iDC);
-            int iMdec = _currentBlockQscaleDc.toMdecWord();
+        public @Nonnull String encodeQscaleDc(@Nonnull MdecCode code, @Nonnull MdecBlock mdecBlock) {
+            _iLastQscale = code.getTop6Bits();
+            int iMdec = code.toMdecShort();
             _top8.write(iMdec >> 8);
             _bottom8.write(iMdec & 0xff);
             return "";
         }
 
         @Override
-        protected @Nonnull byte[] createHeader(int iMdecCodeCount) {
+        public @Nonnull String encode0RlcAc(@Nonnull MdecCode code) {
+            ZeroRunLengthAc match = ZeroRunLengthAcLookup_STR.AC_VARIABLE_LENGTH_CODES_MPEG1.lookup(code);
+
+            if (match != null)
+                return match.getBitString();
+
+            return ZeroRunLengthAcLookup_STR.ESCAPE_CODE.getBitString() +
+                    Misc.bitsToString(code.getTop6Bits(), 6) +
+                    Misc.bitsToString(code.getBottom10Bits(), 10);
+        }
+
+        private @Nonnull byte[] createHeader(int iMdecCodeCount) {
             assert _top8.size() == _bottom8.size();
 
             byte[] ab = _bottom8.toByteArray();
@@ -605,7 +609,7 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
                 _bottom8.write(0);
             ab = _bottom8.toByteArray();
 
-            byte[] abHdr = new byte[10];
+            byte[] abHdr = new byte[IkiHeader.SIZEOF];
             IO.writeInt16LE(abHdr, 0, Calc.calculateHalfCeiling32(iMdecCodeCount));
             IO.writeInt16LE(abHdr, 2, (short)0x3800);
             IO.writeInt16LE(abHdr, 4, (short)_iWidth);
@@ -616,14 +620,10 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
 
             return _top8.toByteArray();
         }
-
-        @Override
-        protected void addTrailingBits(BitStreamWriter bitStream) {
-        }
     }
 
     /** For testing. */
-    static byte[] ikiLzssCompress(byte[] ab) {
+    static byte[] testIkiLzssCompress(byte[] ab) {
         IkiLzssCompressor compressor = new IkiLzssCompressor();
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         compressor.compress(ab, baos);
@@ -631,10 +631,8 @@ public class BitStreamUncompressor_Iki extends BitStreamUncompressor {
     }
 
     /** For testing. */
-    static byte[] ikiLzssUncompress(byte[] ab, int iUncompressSize) {
-        byte[] abUncompressed = new byte[iUncompressSize];
-        ikiLzssUncompress(ab, 0, abUncompressed, iUncompressSize);
-        return abUncompressed;
+    static byte[] testIkiLzssUncompress(byte[] ab, int iUncompressSize) {
+        return ikiLzssUncompress(ab, 0, iUncompressSize);
     }
 
 }

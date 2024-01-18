@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -135,6 +135,7 @@ public class SpuAdpcmSoundUnit implements IAdpcmSoundUnit {
         }
     }
 
+    @Override
     public short getShiftedAdpcmSample(int i) {
         int iIndex = i / 2;
         boolean blnBottomNibble = (i % 2 == 0);
@@ -184,6 +185,7 @@ public class SpuAdpcmSoundUnit implements IAdpcmSoundUnit {
         return getFilterIndex() > 4;
     }
 
+    @Override
     public int getUncorruptedFilterIndex() {
         if (isFilterCorrupted())
             return FILTER_CORRUPTION_FIX[getSoundUnitParameters() & 0x7];
@@ -191,6 +193,7 @@ public class SpuAdpcmSoundUnit implements IAdpcmSoundUnit {
             return getFilterIndex();
     }
 
+    @Override
     public int getRange() {
         return getSoundUnitParameters() & 0xf;
     }

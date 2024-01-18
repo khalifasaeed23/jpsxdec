@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2014-2019  Michael Sabin
+ * Copyright (C) 2014-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -123,7 +123,7 @@ public class XaDecodeCorruption {
         assertEquals(1008, instance.getSampleFramesWritten());
         assertEquals(1008, XaAdpcmDecoder.pcmSampleFramesGeneratedFromXaAdpcmSector(iBitsPerSample, true));
     }
-    
+
     private static abstract class LogTest extends Handler {
         @Override
         abstract public void publish(LogRecord record);

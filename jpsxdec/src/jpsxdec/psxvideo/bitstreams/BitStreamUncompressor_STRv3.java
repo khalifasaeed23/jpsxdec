@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -41,8 +41,6 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
-import jpsxdec.i18n.I;
-import jpsxdec.i18n.exception.LocalizedIncompatibleException;
 import jpsxdec.psxvideo.mdec.MdecBlock;
 import jpsxdec.psxvideo.mdec.MdecCode;
 import jpsxdec.psxvideo.mdec.MdecContext;
@@ -54,7 +52,7 @@ import jpsxdec.util.Misc;
 
 /** Uncompressor for demuxed STR v3 video bitstream data.
  * Makes use of most of STR v2 code. Adds v3 handling for DC values. */
-public class BitStreamUncompressor_STRv3 extends BitStreamUncompressor {
+public class BitStreamUncompressor_STRv3 extends BitStreamUncompressor implements IBitStreamWith1QuantizationScale {
 
     private static final Logger LOG = Logger.getLogger(BitStreamUncompressor_STRv3.class.getName());
 
@@ -63,6 +61,7 @@ public class BitStreamUncompressor_STRv3 extends BitStreamUncompressor {
             super(abFrameData, iDataSize, 3);
         }
 
+        @Override
         public @Nonnull BitStreamUncompressor_STRv3 makeNew(@Nonnull byte[] abBitstream, int iBitstreamSize)
                 throws BinaryDataNotRecognized
         {
@@ -198,6 +197,7 @@ public class BitStreamUncompressor_STRv3 extends BitStreamUncompressor {
             return iDC_Differential * 4;
         }
 
+        @Override
         public @CheckForNull String encode(int iDCdiffFromPrevDiv4) {
             if (iDCdiffFromPrevDiv4 >= _iNegativeDifferentialMin &&
                 iDCdiffFromPrevDiv4 <= _iNegativeDifferentialMax)
@@ -276,12 +276,13 @@ public class BitStreamUncompressor_STRv3 extends BitStreamUncompressor {
     }
 
 
-    /** 11 bits found at the end of STR v3 frames.
+    /** 10 bits found at the end of STR v3 frames.
+     * <pre>1111111111</pre> */
+    private static final String END_OF_FRAME_EXTRA_BITS = "1111111111";
+    private static final int PADDING_BITS_LENGTH = END_OF_FRAME_EXTRA_BITS.length();
+    /** 10 bits found at the end of STR v3 frames.
      * <pre>11111111110</pre> */
-    private static final String END_OF_FRAME_EXTRA_BITS = "11111111110";
-    /** 11 bits found at the end of STR v3 frames.
-     * <pre>11111111110</pre> */
-    private static final int b11111111110 = 0x7FE;
+    private static final int b1111111111 = 0x3FF;
 
     // ########################################################################
     // ## Instance stuff ######################################################
@@ -300,7 +301,12 @@ public class BitStreamUncompressor_STRv3 extends BitStreamUncompressor {
         _header = header;
     }
 
-    private static class QuantizationDcReader_STRv3 implements IQuantizationDc {
+    @Override
+    public int getQuantizationScale() {
+        return _header.getQuantizationScale();
+    }
+
+    public static class QuantizationDcReader_STRv3 implements IQuantizationDcReader {
 
         private final int _iFrameQuantizationScale;
 
@@ -313,6 +319,7 @@ public class BitStreamUncompressor_STRv3 extends BitStreamUncompressor {
             _iFrameQuantizationScale = iFrameQuantizationScale;
         }
 
+        @Override
         public void readQuantizationScaleAndDc(@Nonnull ArrayBitReader bitReader,
                                                @Nonnull MdecContext context,
                                                @Nonnull MdecCode code)
@@ -342,9 +349,10 @@ public class BitStreamUncompressor_STRv3 extends BitStreamUncompressor {
             DcVariableLengthCode dcVlc = CHROMA_LOOKUP[iBits];
 
             if (dcVlc == null) {
-                throw new MdecException.ReadCorruption(MdecException.STRV3_BLOCK_UNCOMPRESS_ERR_UNKNOWN_CHROMA_DC_VLC(
-                        context.getTotalMacroBlocksRead(), context.getCurrentBlock().ordinal(),
-                        Misc.bitsToString(iBits, DC_CHROMA_LONGEST_VARIABLE_LENGTH_CODE)));
+                String s = "Unknown chroma DC variable length code: " +
+                           Misc.bitsToString(iBits, DC_CHROMA_LONGEST_VARIABLE_LENGTH_CODE) +
+                           " at " + context;
+                throw new MdecException.ReadCorruption(s);
             }
 
             assert !BitStreamDebugging.DEBUG || BitStreamDebugging.appendBits(dcVlc.VariableLengthCode);
@@ -393,42 +401,37 @@ public class BitStreamUncompressor_STRv3 extends BitStreamUncompressor {
 
     private static class FrameEndPaddingBits_STRv3 implements IFrameEndPaddingBits {
         @Override
-        public void skipPaddingBits(@Nonnull ArrayBitReader bitReader) throws MdecException.EndOfStream {
-            int iPaddingBits = bitReader.readUnsignedBits(11);
-            if (iPaddingBits != b11111111110) {
-                LOG.log(Level.WARNING, "Incorrect padding bits {0}", Misc.bitsToString(iPaddingBits, 11));
+        public boolean skipPaddingBits(@Nonnull ArrayBitReader bitReader) throws MdecException.EndOfStream {
+            int iPaddingBits = bitReader.readUnsignedBits(PADDING_BITS_LENGTH);
+            if (iPaddingBits != b1111111111) {
+                LOG.log(Level.WARNING, "Incorrect padding bits {0} should be {1}",
+                        new Object[]{Misc.bitsToString(iPaddingBits, PADDING_BITS_LENGTH),
+                                     Misc.bitsToString(b1111111111, PADDING_BITS_LENGTH)});
+                return false;
             }
+            return true;
         }
     }
-    private static final FrameEndPaddingBits_STRv3 FRAME_END_PADDING_BITS_STRV3 = new FrameEndPaddingBits_STRv3();
+    public static final IFrameEndPaddingBits FRAME_END_PADDING_BITS_STRV3 = new FrameEndPaddingBits_STRv3();
 
     @Override
     public @Nonnull BitStreamCompressor_STRv3 makeCompressor() {
-        return new BitStreamCompressor_STRv3(_context.getTotalMacroBlocksRead());
+        return new BitStreamCompressor_STRv3(_context.getTotalMacroBlocksRead(), getQuantizationScale());
     }
 
     // =========================================================================
-    
+
     /** Note unlike all other compressors, STRv3 is LOSSY when encoding
      * DC coefficients. */
     public static class BitStreamCompressor_STRv3 extends BitStreamUncompressor_STRv2.BitStreamCompressor_STRv2 {
 
-        BitStreamCompressor_STRv3(int iMacroBlockCount) {
-            super(iMacroBlockCount);
+        public BitStreamCompressor_STRv3(int iMacroBlockCount, int iOriginalQscale) {
+            this(iMacroBlockCount, iOriginalQscale, BitStreamUncompressor_STRv2.LITTLE_ENDIAN_SHORT_ORDER);
         }
 
-        @Override
-        protected int getHeaderVersion() { return 3; }
-
-        @Override
-        protected int getFrameQscale(@Nonnull byte[] abFrameData) throws LocalizedIncompatibleException {
-            StrV3Header header = new StrV3Header(abFrameData, abFrameData.length);
-            if (!header.isValid())
-                throw new LocalizedIncompatibleException(I.FRAME_IS_NOT_BITSTREAM_FORMAT("STRv3"));
-            return header.getQuantizationScale();
+        protected BitStreamCompressor_STRv3(int iMacroBlockCount, int iOriginalQscale, @Nonnull IByteOrder byteOrder) {
+            super(iMacroBlockCount, iOriginalQscale, 3, END_OF_FRAME_EXTRA_BITS, byteOrder);
         }
-        
-        
 
         @Override
         public @Nonnull byte[] compress(@Nonnull MdecInputStream inStream)
@@ -450,8 +453,8 @@ public class BitStreamUncompressor_STRv3 extends BitStreamUncompressor {
             // round to the nearest multiple of 4
             // TODO: Maybe try to expose this quality loss somehow
             int iDcRound4 = (int)Math.round(iDC / 4.0) * 4;
-            
-            // diff it against the previous DC that was rounded 
+
+            // diff it against the previous DC that was rounded
             // to the nearest multiple of 4, and divide by 4
             // and save the rounded DC for the next iteration
             DcVariableLengthCode[] lookupTable;
@@ -485,12 +488,7 @@ public class BitStreamUncompressor_STRv3 extends BitStreamUncompressor {
                     iDC, iDcDiffRound4Div4));
         }
 
-        @Override
-        protected void addTrailingBits(@Nonnull BitStreamWriter bitStream) {
-            bitStream.write(END_OF_FRAME_EXTRA_BITS);
-        }
-
     }
-    
+
 }
 

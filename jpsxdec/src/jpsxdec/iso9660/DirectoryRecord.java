@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -45,7 +45,7 @@ import jpsxdec.util.BinaryDataNotRecognized;
 
 /** ECMA119: 9.1 */
 public class DirectoryRecord extends ISO9660Struct {
-    
+
     /** ECMA119: 9.1.6 */
     public static final class FileFlags {
         public static final int Existence      = 1 << 0;
@@ -67,21 +67,21 @@ public class DirectoryRecord extends ISO9660Struct {
     final public RecordingDateAndTime date;
     final public int                  flags;
     /*                                file_unit_size         */
-    /*                                interleave             */ 
+    /*                                interleave             */
     /*                                volume_sequence_number */
     /*                                name_len               */
     final public String               name;
     /*                                name_extra             */
-    
+
     public DirectoryRecord(@Nonnull InputStream is)
             throws EOFException, IOException, BinaryDataNotRecognized
     {
         int    length                  = read1(is);
-        if (length < 1) throw new BinaryDataNotRecognized();
+        if (length < 34) throw new BinaryDataNotRecognized();
         /*     ext_attr_length        */ magic1(is, 0);
                extent                  = read8_bothendian(is);
                size                    = read8_bothendian(is);
-               date                    = new RecordingDateAndTime(is);
+               date                    = new RecordingDateAndTime(is); // 7 bytes
                flags                   = read1(is);
         if (((flags & FileFlags.Directory) != 0) && ((size % 2048) != 0))
             throw new BinaryDataNotRecognized();
@@ -89,19 +89,22 @@ public class DirectoryRecord extends ISO9660Struct {
         /*     interleave             */ magic1(is, 0);
         /*     volume_sequence_number */ magic4_bothendian(is, 1);
         int    name_len                = read1(is);
+        // 33 bytes have been read thus far
+        int name_extra_len = length - (33 + name_len);
+        if (name_extra_len < 0)
+            throw new BinaryDataNotRecognized();
                name                    = sanitizeFileOrDirName(readS(is, name_len));
-        // just for debugging
-        byte[] name_extra              = readX(is, length - 33 - name_len);
+        byte[] name_extra              = readX(is, name_extra_len);
     }
-    
+
     @Override
     public String toString() {
         return "'" + name + "' " + size + " bytes " + date;
     }
-    
+
     public static final String CURRENT_DIRECTORY = ".";
     public static final String PARENT_DIRECTORY = "..";
-    
+
     private static String sanitizeFileOrDirName(String s) {
         if ("\0".equals(s)) return CURRENT_DIRECTORY;
         if ("\1".equals(s)) return PARENT_DIRECTORY;
@@ -109,5 +112,5 @@ public class DirectoryRecord extends ISO9660Struct {
         if (s.endsWith(SEPARATOR1)) s = s.substring(0, s.length() - 1);
         return s;
     }
-    
+
 }

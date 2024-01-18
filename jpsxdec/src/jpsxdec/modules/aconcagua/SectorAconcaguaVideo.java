@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2019  Michael Sabin
+ * Copyright (C) 2019-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -39,40 +39,56 @@ package jpsxdec.modules.aconcagua;
 
 import javax.annotation.Nonnull;
 import jpsxdec.cdreaders.CdSector;
-import jpsxdec.i18n.exception.LocalizedIncompatibleException;
 import jpsxdec.i18n.log.ILocalizedLogger;
 import jpsxdec.modules.IdentifiedSector;
-import jpsxdec.modules.video.sectorbased.ISelfDemuxingVideoSector;
 import jpsxdec.modules.video.sectorbased.IVideoSectorWithFrameNumber;
+import jpsxdec.modules.video.sectorbased.SectorBasedFrameAnalysis;
 import jpsxdec.modules.video.sectorbased.SectorBasedFrameReplace;
+import jpsxdec.psxvideo.bitstreams.BitStreamAnalysis;
 import jpsxdec.util.DemuxedData;
+import jpsxdec.util.IO;
 
-/** Video sector of the Aconcagua opening FMV. The ending FMV is different. */
+/** Video sector of Aconcagua videos.
+ * Note that Aconcagua only uses the minimum number of videos sectors needed to hold the
+ * frame data. The remaining sectors are just full of zeroes. A proper encoder would
+ * take advantage of that and use those empty sectors if it helps improve the new frame quality. */
 public class SectorAconcaguaVideo extends IdentifiedSector
-        implements DemuxedData.Piece, ISelfDemuxingVideoSector,
+        implements DemuxedData.Piece,
                    SectorBasedFrameReplace.IReplaceableVideoSector,
                    IVideoSectorWithFrameNumber
 {
 
-    private final static long MAGIC_NUMBER_BE = 0x60010200;
+    private final static long MAGIC_NUMBER_DISC1_BE = 0x60010200;
+    private final static long MAGIC_NUMBER_DISC2_BE = 0x60010300;
+
+    // there are other sectors with magic 0x60010000
+    // I believe these are the sectors that contain streaming polygon
+    // data found by Martin Korth
 
     // Magic                           // 4 bytes  @0
     private int _iChunkNumber;         // 2 bytes  @4
     private int _iChunksInFrame;       // 2 bytes  @6
     private int _iFrameNumber;         // 4 bytes  @8
-    private int _iCodeCount;           // 4 bytes  @12
+    private int _iUsedDemuxedSize;     // 4 bytes  @12
     private int _iWidth;               // 2 bytes  @16
     private int _iHeight;              // 2 bytes  @18
     private int _iQuantizationScale;   // 4 bytes  @20
     // Zeroes                          // 8 bytes  @24
 
-    public SectorAconcaguaVideo(CdSector cdSector) {
+    private boolean _blnIsIntroVideo;
+
+    public SectorAconcaguaVideo(@Nonnull CdSector cdSector) {
         super(cdSector);
         if (isSuperInvalidElseReset()) return;
 
         long lngMagic = cdSector.readUInt32BE(0);
-        if (lngMagic != MAGIC_NUMBER_BE)
+        if (lngMagic == MAGIC_NUMBER_DISC1_BE) {
+            _blnIsIntroVideo = true;
+        } else if (lngMagic == MAGIC_NUMBER_DISC2_BE) {
+            _blnIsIntroVideo = false;
+        } else {
             return;
+        }
 
         _iChunkNumber = cdSector.readSInt16LE(4);
         if (_iChunkNumber < 0 || _iChunkNumber > 10)
@@ -83,8 +99,8 @@ public class SectorAconcaguaVideo extends IdentifiedSector
         _iFrameNumber = cdSector.readSInt32LE(8);
         if (_iFrameNumber < 0)
             return;
-        _iCodeCount = cdSector.readSInt32LE(12);
-        if (_iCodeCount < 1)
+        _iUsedDemuxedSize = cdSector.readSInt32LE(12);
+        if (_iUsedDemuxedSize < 1)
             return;
         _iWidth = cdSector.readSInt16LE(16);
         if (_iWidth < 16 || _iWidth > 400)
@@ -103,26 +119,36 @@ public class SectorAconcaguaVideo extends IdentifiedSector
         setProbability(100);
     }
 
-    public String getTypeName() {
+    @Override
+    public @Nonnull String getTypeName() {
         return "Aconcagua Video";
     }
 
+    public boolean isIntroVideo() {
+        return _blnIsIntroVideo;
+    }
+
+    @Override
     public int getWidth() {
         return _iWidth;
     }
 
+    @Override
     public int getHeight() {
         return _iHeight;
     }
 
+    @Override
     public int getHeaderFrameNumber() {
         return _iFrameNumber;
     }
 
+    @Override
     public int getChunksInFrame() {
         return _iChunksInFrame;
     }
 
+    @Override
     public int getChunkNumber() {
         return _iChunkNumber;
     }
@@ -131,30 +157,39 @@ public class SectorAconcaguaVideo extends IdentifiedSector
         return _iQuantizationScale;
     }
 
+    public int getUsedDemuxSize() {
+        return _iUsedDemuxedSize;
+    }
+
+    @Override
     public int getVideoSectorHeaderSize() {
         return 32;
     }
-    
+
+    @Override
     public int getDemuxPieceSize() {
         return getCdSector().getCdUserDataSize() - getVideoSectorHeaderSize();
     }
 
+    @Override
     public byte getDemuxPieceByte(int i) {
         return getCdSector().readUserDataByte(i);
     }
 
+    @Override
     public void copyDemuxPieceData(@Nonnull byte[] abOut, int iOutPos) {
         getCdSector().getCdUserDataCopy(getVideoSectorHeaderSize(),
                                         abOut, iOutPos, getDemuxPieceSize());
     }
 
+    @Override
     public @Nonnull AconcaguaDemuxer createDemuxer(@Nonnull ILocalizedLogger log) {
         return new AconcaguaDemuxer(this, log);
     }
 
     @Override
     public String toString() {
-        return String.format("%s %s frame:%d chunk:%d/%d %dx%d codes:%d qscale=%d",
+        return String.format("%s %s frame:%d chunk:%d/%d %dx%d used demux:%d qscale=%d",
             getTypeName(),
             super.cdToString(),
             _iFrameNumber,
@@ -162,11 +197,17 @@ public class SectorAconcaguaVideo extends IdentifiedSector
             _iChunksInFrame,
             _iWidth,
             _iHeight,
-            _iCodeCount,
+            _iUsedDemuxedSize,
             _iQuantizationScale);
     }
 
-    public void replaceVideoSectorHeader(byte[] abNewDemuxData, int iNewUsedSize, int iNewMdecCodeCount, byte[] abCurrentVidSectorHeader) throws LocalizedIncompatibleException {
-        throw new UnsupportedOperationException("Not gonna support replacing Aconcagua video");
+    @Override
+    public void replaceVideoSectorHeader(@Nonnull SectorBasedFrameAnalysis existingFrame,
+                                         @Nonnull BitStreamAnalysis newFrame,
+                                         @Nonnull byte[] abCurrentVidSectorHeader)
+    {
+        IO.writeInt32LE(abCurrentVidSectorHeader, 12, newFrame.getBitStreamArrayLength());
+        IO.writeInt32LE(abCurrentVidSectorHeader, 20, newFrame.getFrameQuantizationScale());
     }
+
 }

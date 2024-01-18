@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2016-2019  Michael Sabin
+ * Copyright (C) 2016-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -98,7 +98,7 @@ public class SpuSaverBuilder extends DiscItemSaverBuilder {
         private final @Nonnull ILocalizedMessage _cmdId;
         private final @Nonnull ILocalizedMessage _guiDotExtensionDescription;
 
-        private SpuSaverFormat(@Nonnull String sExtension, 
+        private SpuSaverFormat(@Nonnull String sExtension,
                                @Nonnull ILocalizedMessage guiDotExtensionDescription)
         {
             _jFmt = null;
@@ -106,7 +106,7 @@ public class SpuSaverBuilder extends DiscItemSaverBuilder {
             _cmdId = new UnlocalizedMessage(_sExtension);
             _guiDotExtensionDescription = guiDotExtensionDescription;
         }
-        
+
         private SpuSaverFormat(@Nonnull JavaAudioFormat jFmt) {
             _jFmt = jFmt;
             _sExtension = null;
@@ -188,10 +188,11 @@ public class SpuSaverBuilder extends DiscItemSaverBuilder {
         return false;
     }
 
+    @Override
     public @Nonnull DiscItemSpu getDiscItem() {
         return _spuItem;
     }
-    
+
     // ....................................................
 
     public int getSampleRate() {
@@ -209,7 +210,7 @@ public class SpuSaverBuilder extends DiscItemSaverBuilder {
     }
 
     // ....................................................
-    
+
     @Nonnull
     private SpuSaverFormat _containerFormat = AUDIO_FORMATS.get(0);
     public void setContainerForamt(@Nonnull SpuSaverFormat val) {
@@ -228,7 +229,7 @@ public class SpuSaverBuilder extends DiscItemSaverBuilder {
     }
 
     // ....................................................
-    
+
     public @Nonnull String getExtension() {
         return getContainerFormat().getExtension();
     }
@@ -261,7 +262,7 @@ public class SpuSaverBuilder extends DiscItemSaverBuilder {
     public @Nonnull AudioInputStream getAudioStream() {
         return _spuItem.getAudioStream(getVolume());
     }
-    
+
     private @Nonnull File getFileRelativePath() {
         return new File(_spuItem.getSuggestedBaseName().getPath() + "." + getExtension());
     }
@@ -286,6 +287,7 @@ public class SpuSaverBuilder extends DiscItemSaverBuilder {
 
         tfb.write(fbs.getUnderlyingStream());
     }
+    @Override
     public void commandLineOptions(@Nonnull ArgParser ap, @Nonnull FeedbackStream fbs) {
         if (!ap.hasRemaining())
             return;
@@ -319,6 +321,7 @@ public class SpuSaverBuilder extends DiscItemSaverBuilder {
             // TODO
         }
     }
+    @Override
     public void printSelectedOptions(@Nonnull ILocalizedLogger log) {
         SpuSaverFormat fmt = getContainerFormat();
         JavaAudioFormat jFmt = fmt.getJavaType();
@@ -329,16 +332,18 @@ public class SpuSaverBuilder extends DiscItemSaverBuilder {
         log.log(Level.INFO, I.CMD_FILENAME(getFileRelativePath()));
     }
 
+    @Override
     public @Nonnull ILocalizedMessage getOutputSummary() {
         return new UnlocalizedMessage(getFileRelativePath().getPath());
     }
+    @Override
     public @Nonnull DiscItemSaverBuilderGui getOptionPane() {
         return new SpuSaverBuilderGui(this);
     }
 
 
     @Override
-    public void startSave(@Nonnull ProgressLogger pl, @CheckForNull File directory) 
+    public void startSave(@Nonnull ProgressLogger pl, @CheckForNull File directory)
             throws LoggedFailure, TaskCanceledException
     {
         clearGeneratedFiles();
@@ -367,14 +372,14 @@ public class SpuSaverBuilder extends DiscItemSaverBuilder {
                                     @Nonnull AudioFileFormat.Type audioFileType)
             throws LoggedFailure
     {
-        AudioInputStream ais = _spuItem.getAudioStream(_dblVolume);
-        try {
+        try (AudioInputStream ais = _spuItem.getAudioStream(_dblVolume)) {
             addGeneratedFile(outputFile);
             AudioSystem.write(ais, audioFileType, outputFile);
         } catch (IOException ex) {
             throw new LoggedFailure(pl, Level.SEVERE, I.IO_WRITING_FILE_ERROR_NAME(outputFile.toString()), ex);
         }
     }
+
     private void startSaveSpu(@Nonnull ProgressLogger pl,
                               @Nonnull File outputFile,
                               @Nonnull SpuSaverFormat fmt)
@@ -422,11 +427,12 @@ public class SpuSaverBuilder extends DiscItemSaverBuilder {
         void open(@Nonnull DiscItemSpu spuItem, @Nonnull File outputFile, @Nonnull ILocalizedLogger log) throws LoggedFailure;
         void writeSoundUnit(@Nonnull byte[] abSoundUnit) throws IOException;
     }
-    
+
     private static class SaveSpuFile implements ISaveSpu {
         @CheckForNull
         private FileOutputStream _fos;
 
+        @Override
         public void open(@Nonnull DiscItemSpu spuItem, @Nonnull File outputFile, @Nonnull ILocalizedLogger log) throws LoggedFailure {
             try {
                 _fos = new FileOutputStream(outputFile);
@@ -434,17 +440,21 @@ public class SpuSaverBuilder extends DiscItemSaverBuilder {
                 throw new LoggedFailure(log, Level.SEVERE, I.IO_OPENING_FILE_ERROR_NAME(outputFile.toString()), ex);
             }
         }
+        @Override
         public void writeSoundUnit(byte[] abSoundUnit) throws IOException {
             _fos.write(abSoundUnit);
         }
+        @Override
         public void close() throws IOException {
             _fos.close();
         }
     }
+
     private static class SaveVagFile implements ISaveSpu {
         @CheckForNull
         private VagWriter _vag;
 
+        @Override
         public void open(@Nonnull DiscItemSpu spuItem, @Nonnull File outputFile, @Nonnull ILocalizedLogger log) throws LoggedFailure {
             try {
                 _vag = new VagWriter(outputFile, makeId(spuItem), spuItem.getSampleRate());
@@ -454,9 +464,11 @@ public class SpuSaverBuilder extends DiscItemSaverBuilder {
                 throw new LoggedFailure(log, Level.SEVERE, I.IO_WRITING_TO_FILE_ERROR_NAME(outputFile.toString()), ex);
             }
         }
+        @Override
         public void writeSoundUnit(byte[] abSoundUnit) throws IOException {
             _vag.writeSoundUnit(abSoundUnit);
         }
+        @Override
         public void close() throws IOException {
             _vag.close();
         }
@@ -468,5 +480,4 @@ public class SpuSaverBuilder extends DiscItemSaverBuilder {
             return sCleanName.substring(0, Math.min(sCleanName.length(), 16));
         }
     }
-
 }

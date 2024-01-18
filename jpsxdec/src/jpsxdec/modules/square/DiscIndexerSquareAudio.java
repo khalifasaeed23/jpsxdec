@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -40,7 +40,7 @@ package jpsxdec.modules.square;
 import java.util.Collection;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
-import jpsxdec.cdreaders.CdFileSectorReader;
+import jpsxdec.cdreaders.ICdSectorReader;
 import jpsxdec.discitems.DiscItem;
 import jpsxdec.discitems.SerializedDiscItem;
 import jpsxdec.i18n.exception.LocalizedDeserializationFail;
@@ -48,6 +48,7 @@ import jpsxdec.i18n.log.ILocalizedLogger;
 import jpsxdec.indexing.DiscIndex;
 import jpsxdec.indexing.DiscIndexer;
 import jpsxdec.modules.SectorClaimSystem;
+import jpsxdec.modules.SectorRange;
 
 /** Watches for Square's unique audio format streams.
  * All known games that use Square audio run their streaming media at 2x
@@ -89,7 +90,7 @@ public class DiscIndexerSquareAudio extends DiscIndexer
             return true;
         }
 
-        public @Nonnull DiscItemSquareAudioStream makeStream(@Nonnull CdFileSectorReader cd) {
+        public @Nonnull DiscItemSquareAudioStream makeStream(@Nonnull ICdSectorReader cd) {
 
             int iSectorsPastEnd = 1;
             if (_iMinimumSectorsBetweenPair >= 0)
@@ -106,7 +107,7 @@ public class DiscIndexerSquareAudio extends DiscIndexer
     @Nonnull
     private final ILocalizedLogger _errLog;
     private final SquareAudioSectorToSquareAudioSectorPair _sas2sasp =
-            new SquareAudioSectorToSquareAudioSectorPair(this);
+            new SquareAudioSectorToSquareAudioSectorPair(SectorRange.ALL, this);
     @CheckForNull
     private AudioBuilder _audBldr;
 
@@ -115,7 +116,7 @@ public class DiscIndexerSquareAudio extends DiscIndexer
     }
 
     @Override
-    public @CheckForNull DiscItem deserializeLineRead(@Nonnull SerializedDiscItem fields) 
+    public @CheckForNull DiscItem deserializeLineRead(@Nonnull SerializedDiscItem fields)
             throws LocalizedDeserializationFail
     {
         if (DiscItemSquareAudioStream.TYPE_ID.equals(fields.getType()))
@@ -125,11 +126,11 @@ public class DiscIndexerSquareAudio extends DiscIndexer
 
     @Override
     public void attachToSectorClaimer(@Nonnull SectorClaimSystem scs) {
-        SectorClaimToSquareAudioSector s2sqs = scs.getClaimer(SectorClaimToSquareAudioSector.class);
-        s2sqs.setListener(_sas2sasp);
+        scs.addIdListener(_sas2sasp);
     }
 
 
+    @Override
     public void pairDone(@Nonnull SquareAudioSectorPair pair,
                          @Nonnull ILocalizedLogger log)
     {
@@ -149,6 +150,7 @@ public class DiscIndexerSquareAudio extends DiscIndexer
             _audBldr = new AudioBuilder(pair);
         }
     }
+    @Override
     public void endOfSectors(@Nonnull ILocalizedLogger log) {
         if (_audBldr != null) {
             // submit the in-progress audio stream
@@ -160,6 +162,10 @@ public class DiscIndexerSquareAudio extends DiscIndexer
 
     @Override
     public void listPostProcessing(Collection<DiscItem> allItems) {
+    }
+    @Override
+    public boolean filterChild(DiscItem parent, DiscItem child) {
+        return false;
     }
     @Override
     public void indexGenerated(DiscIndex index) {

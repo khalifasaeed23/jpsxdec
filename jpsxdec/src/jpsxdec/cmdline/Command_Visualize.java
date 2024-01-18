@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2013-2019  Michael Sabin
+ * Copyright (C) 2013-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -45,19 +45,19 @@ import java.util.TreeSet;
 import java.util.logging.Logger;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
-import jpsxdec.cdreaders.CdFileSectorReader;
+import jpsxdec.cdreaders.ICdSectorReader;
 import jpsxdec.discitems.DiscItem;
 import jpsxdec.i18n.I;
 import jpsxdec.i18n.ILocalizedMessage;
 import jpsxdec.i18n.log.ILocalizedLogger;
 import jpsxdec.i18n.log.ShouldNotLog;
 import jpsxdec.indexing.DiscIndex;
+import jpsxdec.modules.IIdentifiedSector;
 import jpsxdec.modules.SectorClaimSystem;
-import jpsxdec.modules.UnidentifiedSector;
 import jpsxdec.util.ArgParser;
 import jpsxdec.util.IO;
 
-
+/** Handle {@code -visualize} option. */
 class Command_Visualize extends Command {
     @Nonnull
     private String _sOutfile;
@@ -66,14 +66,16 @@ class Command_Visualize extends Command {
         super("-visualize");
     }
 
+    @Override
     protected @CheckForNull ILocalizedMessage validate(@Nonnull String s) {
         _sOutfile = s;
         return null;
     }
 
+    @Override
     public void execute(@Nonnull ArgParser ap) throws CommandLineException {
         DiscIndex index = getIndex();
-        CdFileSectorReader cd = index.getSourceCd();
+        ICdSectorReader cd = index.getSourceCd();
         FileOutputStream pdfStream = null;
         try {
             final int SECTOR_SECTION_SIZE = 32;
@@ -93,7 +95,7 @@ class Command_Visualize extends Command {
              */
             _fbs.println(I.CMD_GENERATING_VISUALIZATION());
             int[] aiDataPoints = extractDataPoints(index);
-            // pre-determine the tree-area width based on max point of overalpping items
+            // pre-determine the tree-area width based on max point of overlapping items
             int iMaxOverlap = findMaxOverlap(aiDataPoints, index);
             //########################################################
             int iWidth = SECTOR_SECTION_SIZE + iMaxOverlap * TEXT_LINE_HEIGHT + iMaxOverlap * BOX_AREA_WIDTH;
@@ -113,14 +115,10 @@ class Command_Visualize extends Command {
             ILocalizedLogger log = new ShouldNotLog();
             for (int iSector = 0; it.hasNext(); iSector++) {
                 try {
-                    SectorClaimSystem.ClaimedSector sector = it.next(log);
-                    Color c;
-                    if (sector.getClaimer() == null)
-                        c = classToColor(UnidentifiedSector.class);
-                    else
-                        c = classToColor(sector.getClaimer().getClass());
+                    IIdentifiedSector idSector = it.next(log);
+                    Color c = classToColor(idSector.getClass());
                     int[] aiRgb = {c.getRed(), c.getGreen(), c.getBlue()};
-                    
+
                     com.pdfjet.Box pdfBox = new com.pdfjet.Box(0 * SCALE, iSector * SCALE, SECTOR_SECTION_SIZE * SCALE, 1 * SCALE);
                     pdfBox.setFillShape(true);
                     pdfBox.setLineWidth(0);
@@ -130,6 +128,7 @@ class Command_Visualize extends Command {
                     ex.printStackTrace(); // TODO?
                 }
             }
+            it.flush(log);
             DiscItem[] aoRunningItems = new DiscItem[iMaxOverlap];
             /*
              * at each datapoint, there are basically 3 different things that can happen
@@ -185,10 +184,10 @@ class Command_Visualize extends Command {
         }
     }
 
-    private final HashMap<Class, Color> colorLookup = new HashMap<Class, Color>();
+    private final HashMap<Class<?>, Color> colorLookup = new HashMap<Class<?>, Color>();
 
-    private @Nonnull Color classToColor(@Nonnull Class c) {
-        Color color = colorLookup.get(c.getClass());
+    private @Nonnull Color classToColor(@Nonnull Class<?> c) {
+        Color color = colorLookup.get(c);
         if (color == null) {
             int iClr = c.getName().hashCode();
             color = new Color(iClr);

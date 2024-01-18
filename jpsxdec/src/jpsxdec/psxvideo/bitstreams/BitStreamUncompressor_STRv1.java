@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -39,8 +39,6 @@ package jpsxdec.psxvideo.bitstreams;
 
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
-import jpsxdec.i18n.I;
-import jpsxdec.i18n.exception.LocalizedIncompatibleException;
 import jpsxdec.util.BinaryDataNotRecognized;
 
 /** Rather uncommon STR "version 1" video frame format.
@@ -57,13 +55,14 @@ import jpsxdec.util.BinaryDataNotRecognized;
  * frames further to fit camera data. This led to AC values being reduced,
  * some falling to 0, but they didn't merge those codes to save space.
  */
-public class BitStreamUncompressor_STRv1 extends BitStreamUncompressor {
+public class BitStreamUncompressor_STRv1 extends BitStreamUncompressor implements IBitStreamWith1QuantizationScale {
 
     public static class StrV1Header extends StrHeader {
         public StrV1Header(byte[] abFrameData, int iDataSize) {
             super(abFrameData, iDataSize, 1);
         }
 
+        @Override
         public @Nonnull BitStreamUncompressor_STRv1 makeNew(@Nonnull byte[] abBitstream, int iBitstreamSize)
                 throws BinaryDataNotRecognized
         {
@@ -102,32 +101,26 @@ public class BitStreamUncompressor_STRv1 extends BitStreamUncompressor {
                                        @Nonnull ArrayBitReader bitReader)
     {
         super(bitReader, ZeroRunLengthAcLookup_STR.AC_VARIABLE_LENGTH_CODES_MPEG1,
-              new BitStreamUncompressor_STRv2.QuantizationDc_STRv12(header.getQuantizationScale()),
+              new BitStreamUncompressor_STRv2.QuantizationDcReader_STRv12(header.getQuantizationScale()),
               BitStreamUncompressor_STRv2.AC_ESCAPE_CODE_STR,
               BitStreamUncompressor_STRv2.FRAME_END_PADDING_BITS_STRV2);
         _header = header;
     }
-    
+
+    @Override
+    public int getQuantizationScale() {
+        return _header.getQuantizationScale();
+    }
+
     @Override
     public @Nonnull BitStreamCompressor_STRv1 makeCompressor() {
-        return new BitStreamCompressor_STRv1(_context.getTotalMacroBlocksRead());
+        return new BitStreamCompressor_STRv1(_context.getTotalMacroBlocksRead(), getQuantizationScale());
     }
 
     public static class BitStreamCompressor_STRv1 extends BitStreamUncompressor_STRv2.BitStreamCompressor_STRv2 {
 
-        private BitStreamCompressor_STRv1(int iMacroBlockCount) {
-            super(iMacroBlockCount);
-        }
-
-        @Override
-        protected int getHeaderVersion() { return 1; }
-
-        @Override
-        protected int getFrameQscale(@Nonnull byte[] abFrameData) throws LocalizedIncompatibleException {
-            StrV1Header header = new StrV1Header(abFrameData, abFrameData.length);
-            if (!header.isValid())
-                throw new LocalizedIncompatibleException(I.FRAME_IS_NOT_BITSTREAM_FORMAT("STRv1"));
-            return header.getQuantizationScale();
+        private BitStreamCompressor_STRv1(int iMacroBlockCount, int iOriginalQscale) {
+            super(iMacroBlockCount, iOriginalQscale, 1);
         }
 
     }

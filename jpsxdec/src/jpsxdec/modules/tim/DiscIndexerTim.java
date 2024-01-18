@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -52,7 +52,7 @@ import jpsxdec.indexing.DiscIndex;
 import jpsxdec.indexing.DiscIndexer;
 import jpsxdec.modules.CdSectorDemuxPiece;
 import jpsxdec.modules.SectorClaimSystem;
-import jpsxdec.modules.SectorClaimToUnidentifiedSector;
+import jpsxdec.modules.UnidentifiedSectorStreamListener;
 import jpsxdec.tim.Tim;
 import jpsxdec.tim.TimInfo;
 import jpsxdec.util.DemuxPushInputStream;
@@ -60,7 +60,7 @@ import jpsxdec.util.DemuxedData;
 import jpsxdec.util.IO;
 
 /** Searches for TIM images. */
-public class DiscIndexerTim extends DiscIndexer implements SectorClaimToUnidentifiedSector.Listener {
+public class DiscIndexerTim extends DiscIndexer implements UnidentifiedSectorStreamListener.Listener {
 
     private static final Logger LOG = Logger.getLogger(DiscIndexerTim.class.getName());
 
@@ -75,14 +75,14 @@ public class DiscIndexerTim extends DiscIndexer implements SectorClaimToUnidenti
 
     @Override
     public void attachToSectorClaimer(@Nonnull SectorClaimSystem scs) {
-        SectorClaimToUnidentifiedSector s2us = scs.getClaimer(SectorClaimToUnidentifiedSector.class);
-        s2us.addListener(this);
+        UnidentifiedSectorStreamListener.attachToSectorClaimer(scs, this);
     }
 
     @CheckForNull
     private DemuxPushInputStream<CdSectorDemuxPiece> _stream;
 
-    public void feedSector(CdSector sector) {
+    @Override
+    public void feedSector(@Nonnull CdSector sector) {
         CdSectorDemuxPiece piece = new CdSectorDemuxPiece(sector);
         if (_stream == null)
             _stream = new DemuxPushInputStream<CdSectorDemuxPiece>(piece);
@@ -91,6 +91,7 @@ public class DiscIndexerTim extends DiscIndexer implements SectorClaimToUnidenti
         findTims();
     }
 
+    @Override
     public void endOfUnidentified() {
         exhaustStream();
     }
@@ -143,7 +144,7 @@ public class DiscIndexerTim extends DiscIndexer implements SectorClaimToUnidenti
         // read skip loop until skip throws eof
         while (_stream.available() > 2) {
             // ^ if the first 2 bytes of a Tim are found at the very end of the stream,
-            //   it's stilly to assume we were in the middle of a possible Tim
+            //   it's silly to assume we were in the middle of a possible Tim
             _stream.mark(Integer.MAX_VALUE);
             try {
                 TimInfo ti = Tim.isTim(_stream);
@@ -164,7 +165,7 @@ public class DiscIndexerTim extends DiscIndexer implements SectorClaimToUnidenti
             try {
                 IO.skip(_stream, 4);
             } catch (EOFException ex) {
-                // end of stream when skipping: stream exhaused, all done
+                // end of stream when skipping: stream exhausted, all done
                 break;
             } catch (IOException ex) {
                 // should not happen
@@ -186,7 +187,10 @@ public class DiscIndexerTim extends DiscIndexer implements SectorClaimToUnidenti
     @Override
     public void listPostProcessing(@Nonnull Collection<DiscItem> allItems) {
     }
-
+    @Override
+    public boolean filterChild(DiscItem parent, DiscItem child) {
+        return false;
+    }
     @Override
     public void indexGenerated(@Nonnull DiscIndex index) {
     }

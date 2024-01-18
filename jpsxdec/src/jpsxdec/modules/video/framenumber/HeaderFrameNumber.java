@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -156,7 +156,7 @@ public class HeaderFrameNumber extends FrameNumber {
             }
             if (headerNumber.tooManyDuplicates()) {
                 log.log(Level.WARNING, I.FRAMES_UNEXPECTED_NUMBER());
-                LOG.log(Level.WARNING, 
+                LOG.log(Level.WARNING,
                         "Expected only {0} frames with the header frame number {1}, but found {2}",
                         new Object[]{headerNumber.getExpectedDuplicateMax(),
                                      headerNumber.getFrameValue(),
@@ -164,6 +164,7 @@ public class HeaderFrameNumber extends FrameNumber {
             }
         }
 
+        @Override
         public @Nonnull HeaderFrameNumber next(int iSector, int iHeaderFrame, @Nonnull ILocalizedLogger log) {
             IndexSectorFrameNumber f1 = _indexSectorFrameNumberFormatter.next(iSector, log);
             FrameNumberNumber hnn = _headerFormatter.next(iHeaderFrame);

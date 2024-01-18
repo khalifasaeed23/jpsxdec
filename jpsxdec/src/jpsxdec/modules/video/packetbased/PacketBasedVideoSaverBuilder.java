@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2012-2019  Michael Sabin
+ * Copyright (C) 2012-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -42,6 +42,7 @@ import java.io.File;
 import java.util.logging.Level;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
+import jpsxdec.cdreaders.DiscSpeed;
 import jpsxdec.discitems.DiscItemSaverBuilder;
 import jpsxdec.discitems.DiscItemSaverBuilderGui;
 import jpsxdec.i18n.FeedbackStream;
@@ -50,10 +51,11 @@ import jpsxdec.i18n.TabularFeedback;
 import jpsxdec.i18n.exception.LoggedFailure;
 import jpsxdec.i18n.log.ILocalizedLogger;
 import jpsxdec.i18n.log.ProgressLogger;
-import jpsxdec.modules.sharedaudio.ISectorAudioDecoder;
+import jpsxdec.modules.video.ISectorClaimToFrameAndAudio;
 import jpsxdec.modules.video.save.VideoSaver;
 import jpsxdec.modules.video.save.VideoSaverBuilder;
 import jpsxdec.util.ArgParser;
+import jpsxdec.util.Fraction;
 import jpsxdec.util.TaskCanceledException;
 
 public class PacketBasedVideoSaverBuilder extends VideoSaverBuilder {
@@ -79,6 +81,7 @@ public class PacketBasedVideoSaverBuilder extends VideoSaverBuilder {
         }
     }
 
+    @Override
     public @Nonnull DiscItemSaverBuilderGui getOptionPane() {
         return new PacketBasedVideoSaverBuilderGui(this);
     }
@@ -86,6 +89,7 @@ public class PacketBasedVideoSaverBuilder extends VideoSaverBuilder {
     // .........................................................................
 
 
+    @Override
     public boolean getAudioVolume_enabled() {
         return getSavingAudio();
     }
@@ -93,14 +97,16 @@ public class PacketBasedVideoSaverBuilder extends VideoSaverBuilder {
     // .........................................................................
 
     public boolean getSavingAudio_enabled() {
-        return hasAudio() && getVideoFormat().isAvi() && getSaveStartFrame() == null;
+        return hasAudio() && getVideoFormat().isVideo() && getSaveStartFrame() == null;
     }
 
+    @Override
     public boolean hasAudio() {
         return _sourceVidItem.hasAudio();
     }
 
     private boolean _blnSavingAudio = true;
+    @Override
     public boolean getSavingAudio() {
         if (!getSavingAudio_enabled())
             return false;
@@ -113,7 +119,8 @@ public class PacketBasedVideoSaverBuilder extends VideoSaverBuilder {
 
     // .........................................................................
 
-    public boolean getEmulatePsxAvSync() {
+    @Override
+    public boolean getEmulatePsxAvSync() { // TODO refactor so this function isn't in packet-based
         return false;
     }
 
@@ -125,7 +132,7 @@ public class PacketBasedVideoSaverBuilder extends VideoSaverBuilder {
         super.commandLineOptions(ap, fbs);
         if (!ap.hasRemaining())
             return;
-        
+
         BooleanHolder noaud = ap.addBoolOption(false, "-noaud"); // Only with AVI & audio
 
         ap.match();
@@ -146,21 +153,20 @@ public class PacketBasedVideoSaverBuilder extends VideoSaverBuilder {
         log.log(Level.INFO, I.CMD_EMBEDDED_PACKET_BASED_AUDIO_HZ(_sourceVidItem.getAudioSampleFramesPerSecond()));
     }
 
+    @Override
     public void startSave(@Nonnull ProgressLogger pl, @CheckForNull File directory)
             throws LoggedFailure, TaskCanceledException
     {
         clearGeneratedFiles();
         printSelectedOptions(pl);
 
-        SectorClaimToAudioAndFrame vid = _sourceVidItem.makeAudioVideoDemuxer(getAudioVolume());
-        ISectorAudioDecoder aud;
-        if (getSavingAudio()) {
-            aud = vid;
-        } else {
-            aud = null;
-        }
+        ISectorClaimToFrameAndAudio sc2fa = _sourceVidItem.makeVideoAudioStream(getAudioVolume());
 
-        VideoSaver vs = new VideoSaver(_sourceVidItem, this, thisGeneratedFileListener, directory, pl, vid, aud);
+        Fraction sectorsPerFrame = Fraction.divide(DiscSpeed.DOUBLE.getSectorsPerSecond(),
+                                                   _sourceVidItem.getFramesPerSecond());
+
+        VideoSaver vs = new VideoSaver(_sourceVidItem, this, thisGeneratedFileListener, directory, pl, sc2fa,
+                                       DiscSpeed.DOUBLE, sectorsPerFrame, _sourceVidItem.getStartSector());
         vs.save(pl);
     }
 

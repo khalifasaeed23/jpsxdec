@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -44,7 +44,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
-import jpsxdec.cdreaders.CdFileSectorReader;
+import jpsxdec.cdreaders.CdException;
+import jpsxdec.cdreaders.DiscSpeed;
 import jpsxdec.formats.JavaImageFormat;
 import jpsxdec.i18n.I;
 import jpsxdec.i18n.ILocalizedMessage;
@@ -54,10 +55,9 @@ import jpsxdec.i18n.log.ILocalizedLogger;
 import jpsxdec.i18n.log.ProgressLogger;
 import jpsxdec.modules.IIdentifiedSector;
 import jpsxdec.modules.SectorClaimSystem;
-import jpsxdec.modules.sharedaudio.ISectorAudioDecoder;
 import jpsxdec.modules.video.DiscItemVideoStream;
 import jpsxdec.modules.video.IDemuxedFrame;
-import jpsxdec.modules.video.ISectorClaimToDemuxedFrame;
+import jpsxdec.modules.video.ISectorClaimToFrameAndAudio;
 import jpsxdec.modules.video.framenumber.FormattedFrameNumber;
 import jpsxdec.modules.video.framenumber.FrameCompareIs;
 import jpsxdec.modules.video.framenumber.FrameLookup;
@@ -65,6 +65,7 @@ import jpsxdec.modules.video.framenumber.FrameNumber;
 import jpsxdec.psxvideo.mdec.ChromaUpsample;
 import jpsxdec.psxvideo.mdec.MdecDecoder;
 import jpsxdec.psxvideo.mdec.MdecDecoder_double;
+import jpsxdec.util.Fraction;
 import jpsxdec.util.IO;
 import jpsxdec.util.TaskCanceledException;
 
@@ -89,131 +90,138 @@ public class VideoSaver {
     private final int _iEndSector;
 
     @Nonnull
-    private final FrameToBitstreamFilter _frame2bitstream;
-    @CheckForNull
-    private final ISectorAudioDecoder _audioDecoder;
+    private final DiscSpeed _discSpeed;
+    private final Fraction _sectorsPerFrame;
+    private final int _iAbsolutePresentationStartSector;
+
+    @Nonnull
+    private final FrameToBitstreamOrMdecFilter _frame2bsOrMdecFilter;
 
     public VideoSaver(@Nonnull DiscItemVideoStream vidItem,
                       @Nonnull VideoSaverBuilder vsb,
                       @Nonnull VDP.GeneratedFileListener genFileListener,
                       @CheckForNull File directory,
                       @Nonnull ILocalizedLogger log,
-                      @Nonnull ISectorClaimToDemuxedFrame demuxer,
-                      @CheckForNull ISectorAudioDecoder audioDecoder)
+                      @Nonnull ISectorClaimToFrameAndAudio sectorClaimToFrameAndAudio,
+                      @Nonnull DiscSpeed discSpeed,
+                      @Nonnull Fraction sectorsPerFrame,
+                      int iAbsolutePresentationStartSector)
     {
         _vidItem = vidItem;
         _vsb = vsb;
         _videoFormat = vsb.getVideoFormat();
         _directory = directory;
-        _audioDecoder = audioDecoder;
+        _discSpeed = discSpeed;
+        _sectorsPerFrame = sectorsPerFrame;
+        _iAbsolutePresentationStartSector = iAbsolutePresentationStartSector;
+        boolean blnSaveAudio = vsb.getSavingAudio();
 
-        _pipeline.setMap(demuxer);
+        _pipeline.setSectorClaim2FrameAndAudio(sectorClaimToFrameAndAudio);
         _pipeline.setFileListener(genFileListener);
 
-        VDP.ToAvi toAvi = null;
+        VDP.ToVideo toVideo = null;
         switch (_videoFormat) {
 
             case IMGSEQ_BITSTREAM: {
                 VDP.Bitstream2File bs2f = new VDP.Bitstream2File(makeFormatter(), log);
-                _pipeline.setMap(bs2f);
+                _pipeline.setBitstreamListener(bs2f);
+                _pipeline.setFileGenerator(bs2f);
             }
             break;
 
             case IMGSEQ_MDEC: {
                 addBitstream2Mdec();
                 VDP.Mdec2File m2f = new VDP.Mdec2File(makeFormatter(), _vsb.getWidth(), _vsb.getHeight(), log);
-                _pipeline.setMap(m2f);
+                _pipeline.setMdec2File(m2f);
             } break;
 
             case IMGSEQ_BMP:
-            case IMGSEQ_PNG: {
+            case IMGSEQ_PNG:
+            case IMGSEQ_TIFF: {
                 addBitstream2Mdec();
                 addMdec2Decoded(log);
                 JavaImageFormat javaImgFmt = _videoFormat.getImgFmt();
                 VDP.Decoded2JavaImage d2j = new VDP.Decoded2JavaImage(
                         makeFormatter(), javaImgFmt, _vsb.getWidth(), _vsb.getHeight(), log);
-                _pipeline.setMap(d2j);
+                _pipeline.setDecoded2File(d2j);
             } break;
 
             case IMGSEQ_JPG: {
                 addBitstream2Mdec();
                 VDP.Mdec2Jpeg m2jpg = new VDP.Mdec2Jpeg(makeFormatter(), _vsb.getWidth(), _vsb.getHeight(), log);
-                _pipeline.setMap(m2jpg);
+                _pipeline.setMdec2File(m2jpg);
             } break;
 
             case AVI_MJPG: {
                 addBitstream2Mdec();
                 VDP.Mdec2MjpegAvi m2mjpg;
-                if (_audioDecoder == null)
-                    m2mjpg = new VDP.Mdec2MjpegAvi(getAviFile(), _vsb.getWidth(), _vsb.getHeight(), makeVSync(), log);
+                if (blnSaveAudio)
+                    m2mjpg = new VDP.Mdec2MjpegAvi(getVideoFile(), _vsb.getWidth(), _vsb.getHeight(), makeAvSync(sectorClaimToFrameAndAudio), sectorClaimToFrameAndAudio.getOutputFormat(), log);
                 else
-                    m2mjpg = new VDP.Mdec2MjpegAvi(getAviFile(), _vsb.getWidth(), _vsb.getHeight(), makeAvSync(_audioDecoder), _audioDecoder.getOutputFormat(), log);
-                _pipeline.setToAvi(m2mjpg);
-                toAvi = m2mjpg;
+                    m2mjpg = new VDP.Mdec2MjpegAvi(getVideoFile(), _vsb.getWidth(), _vsb.getHeight(), makeVSync(), log);
+                _pipeline.setMdec2File(m2mjpg);
+                toVideo = m2mjpg;
             } break;
 
             case AVI_JYUV: {
                 addBitstream2Mdec();
                 addMdec2Decoded(log);
                 VDP.Decoded2JYuvAvi d2jyuv;
-                if (_audioDecoder == null)
-                    d2jyuv = new VDP.Decoded2JYuvAvi(getAviFile(), _vsb.getWidth(), _vsb.getHeight(), makeVSync(), log);
-                else 
-                    d2jyuv = new VDP.Decoded2JYuvAvi(getAviFile(), _vsb.getWidth(), _vsb.getHeight(), makeAvSync(_audioDecoder), _audioDecoder.getOutputFormat(), log);
-                _pipeline.setToAvi(d2jyuv);
-                toAvi = d2jyuv;
+                if (blnSaveAudio)
+                    d2jyuv = new VDP.Decoded2JYuvAvi(getVideoFile(), _vsb.getWidth(), _vsb.getHeight(), makeAvSync(sectorClaimToFrameAndAudio), sectorClaimToFrameAndAudio.getOutputFormat(), log);
+                else
+                    d2jyuv = new VDP.Decoded2JYuvAvi(getVideoFile(), _vsb.getWidth(), _vsb.getHeight(), makeVSync(), log);
+                _pipeline.setDecoded2File(d2jyuv);
+                toVideo = d2jyuv;
             } break;
 
             case AVI_YUV: {
                 addBitstream2Mdec();
                 addMdec2Decoded(log);
                 VDP.Decoded2YuvAvi d2yuv;
-                if (_audioDecoder == null)
-                    d2yuv = new VDP.Decoded2YuvAvi(getAviFile(), _vsb.getWidth(), _vsb.getHeight(), makeVSync(), log);
-                else 
-                    d2yuv = new VDP.Decoded2YuvAvi(getAviFile(), _vsb.getWidth(), _vsb.getHeight(), makeAvSync(_audioDecoder), _audioDecoder.getOutputFormat(), log);
-                _pipeline.setToAvi(d2yuv);
-                toAvi = d2yuv;
+                if (blnSaveAudio)
+                    d2yuv = new VDP.Decoded2YuvAvi(getVideoFile(), _vsb.getWidth(), _vsb.getHeight(), makeAvSync(sectorClaimToFrameAndAudio), sectorClaimToFrameAndAudio.getOutputFormat(), log);
+                else
+                    d2yuv = new VDP.Decoded2YuvAvi(getVideoFile(), _vsb.getWidth(), _vsb.getHeight(), makeVSync(), log);
+                _pipeline.setDecoded2File(d2yuv);
+                toVideo = d2yuv;
             } break;
 
             case AVI_RGB: {
                 addBitstream2Mdec();
                 addMdec2Decoded(log);
                 VDP.Decoded2RgbAvi d2rgb;
-                if (_audioDecoder == null)
-                    d2rgb = new VDP.Decoded2RgbAvi(getAviFile(), _vsb.getWidth(), _vsb.getHeight(), makeVSync(), log);
+                if (blnSaveAudio)
+                    d2rgb = new VDP.Decoded2RgbAvi(getVideoFile(), _vsb.getWidth(), _vsb.getHeight(), makeAvSync(sectorClaimToFrameAndAudio), sectorClaimToFrameAndAudio.getOutputFormat(), log);
                 else
-                    d2rgb = new VDP.Decoded2RgbAvi(getAviFile(), _vsb.getWidth(), _vsb.getHeight(), makeAvSync(_audioDecoder), _audioDecoder.getOutputFormat(), log);
-                _pipeline.setToAvi(d2rgb);
-                toAvi = d2rgb;
+                    d2rgb = new VDP.Decoded2RgbAvi(getVideoFile(), _vsb.getWidth(), _vsb.getHeight(), makeVSync(), log);
+                _pipeline.setDecoded2File(d2rgb);
+                toVideo = d2rgb;
             } break;
 
             default:
                 throw new RuntimeException();
         }
+        if (toVideo != null)
+            _pipeline.setVideo(toVideo);
 
-        if (_audioDecoder == null) {
-            _iStartSector = _vidItem.getStartSector();
-            _iEndSector = _vidItem.getEndSector();
-            _frame2bitstream = new FrameToBitstreamFilter(_vsb.getFileNumberType(), _vsb.getSaveStartFrame(), _vsb.getSaveEndFrame(), log);
-        } else {
-            _pipeline.setAudioDecoder(_audioDecoder);
-            if (toAvi != null)
-                _pipeline.setAudioPacketListener(toAvi);
+        _iStartSector = sectorClaimToFrameAndAudio.getStartSector();
+        _iEndSector = sectorClaimToFrameAndAudio.getEndSector();
+        if (blnSaveAudio) {
+            if (toVideo != null)
+                _pipeline.setAudioPacketListener(toVideo);
 
-            _iStartSector = Math.min(_vidItem.getStartSector(),
-                                     _audioDecoder.getStartSector());
-            _iEndSector   = Math.max(_vidItem.getEndSector(),
-                                     _audioDecoder.getEndSector());
             // when saving with audio, you can't choose start/end frames
-            _frame2bitstream = new FrameToBitstreamFilter(_vsb.getFileNumberType(), null, null, log);
+            _frame2bsOrMdecFilter = new FrameToBitstreamOrMdecFilter(_vsb.getFileNumberType(), null, null, log);
+        } else {
+            _frame2bsOrMdecFilter = new FrameToBitstreamOrMdecFilter(_vsb.getFileNumberType(), _vsb.getSaveStartFrame(), _vsb.getSaveEndFrame(), log);
         }
-        _pipeline.setMap(_frame2bitstream);
+        _pipeline.setFrame2BitstreamOrMdec(_frame2bsOrMdecFilter);
     }
 
     private void addBitstream2Mdec() {
         VDP.Bitstream2Mdec bs2m = new VDP.Bitstream2Mdec();
-        _pipeline.setMap(bs2m);
+        _pipeline.setBitstream2Mdec(bs2m);
     }
 
     private void addMdec2Decoded(@Nonnull ILocalizedLogger log) {
@@ -225,78 +233,82 @@ public class VideoSaver {
         }
 
         VDP.Mdec2Decoded mdec2decode = new VDP.Mdec2Decoded(vidDecoder, log);
-        _pipeline.setMap(mdec2decode);
+        _pipeline.setMdec2Decoded(mdec2decode);
     }
 
     private void startup(@Nonnull ILocalizedLogger log) throws LoggedFailure {
-        VDP.ToAvi avi = _pipeline.getAvi();
-        if (avi != null) {
+        VDP.ToVideo video = _pipeline.getVideo();
+        if (video != null) {
             try {
-                avi.open();
+                video.open();
             } catch (LocalizedFileNotFoundException ex) {
                 throw new LoggedFailure(log, Level.SEVERE, ex.getSourceMessage(), ex);
             } catch (FileNotFoundException ex) {
-                throw new LoggedFailure(log, Level.SEVERE, I.IO_OPENING_FILE_ERROR_NAME(avi.getOutputFile().toString()), ex);
+                throw new LoggedFailure(log, Level.SEVERE, I.IO_OPENING_FILE_ERROR_NAME(video.getOutputFile().toString()), ex);
             } catch (IOException ex) {
-                throw new LoggedFailure(log, Level.SEVERE, I.IO_WRITING_TO_FILE_ERROR_NAME(avi.getOutputFile().toString()), ex);
+                throw new LoggedFailure(log, Level.SEVERE, I.IO_WRITING_TO_FILE_ERROR_NAME(video.getOutputFile().toString()), ex);
             }
         }
     }
 
     private void shutdown() {
-        VDP.ToAvi avi = _pipeline.getAvi();
-        if (avi != null)
-            IO.closeSilently(avi, LOG);
+        VDP.ToVideo video = _pipeline.getVideo();
+        if (video != null)
+            IO.closeSilently(video, LOG);
     }
 
 
     public void save(@Nonnull ProgressLogger pl) throws LoggedFailure, TaskCanceledException {
         SectorClaimSystem it = SectorClaimSystem.create(_vidItem.getSourceCd(), _iStartSector, _iEndSector);
-        _pipeline.attachToSectorClaimer(it);
+        _pipeline.setSectorClaimSystem(it);
 
         // finish setting up the pipeline
         _pipeline.autowire();
 
         pl.progressStart(_iEndSector - _iStartSector + 1);
         startup(pl);
+        boolean blnException = true;
         try {
 
 
             for (int iSector = 0; it.hasNext(); iSector++) {
                 IIdentifiedSector identifiedSector; // keep it out here so I can see what it was while debugging
                 try {
-                    identifiedSector = it.next(pl).getClaimer();
-                } catch (CdFileSectorReader.CdReadException ex) {
+                    identifiedSector = it.next(pl);
+                } catch (CdException.Read ex) {
                     throw new LoggedFailure(pl, Level.SEVERE,
                             I.IO_READING_FROM_FILE_ERROR_NAME(ex.getFile().toString()), ex);
                 }
 
-                sendLogEvent(pl, _frame2bitstream);
+                sendLogEvent(pl, _frame2bsOrMdecFilter);
                 pl.progressUpdate(iSector);
 
                 // if we've already handled the frames we want to save, break early
-                if (_frame2bitstream.isDone())
+                if (_frame2bsOrMdecFilter.isDone())
                     break;
             }
 
-            it.close(pl);
-            sendLogEvent(pl, _frame2bitstream);
-            pl.progressEnd();
+            it.flush(pl);
+            sendLogEvent(pl, _frame2bsOrMdecFilter);
+
+            blnException = false;
         } finally {
             shutdown();
+            if (!blnException)
+                pl.progressEnd();
         }
 
     }
 
-    private @Nonnull void sendLogEvent(@Nonnull ProgressLogger pl,
-                                       @Nonnull FrameToBitstreamFilter f2bs)
+    private void sendLogEvent(@Nonnull ProgressLogger pl,
+                              @Nonnull FrameToBitstreamOrMdecFilter f2bsOrMdec)
     {
         if (!pl.isSeekingEvent())
             return;
-        FrameNumber curFrm = f2bs.getCurrentFrame();
+        FrameNumber curFrm = f2bsOrMdec.getCurrentFrame();
         if (curFrm == null)
             return;
-        
+
         ILocalizedMessage msg = curFrm.getDescription(_vsb.getFileNumberType());
         if (msg == null) {
             // if this video saver was created correctly, the frame number
@@ -313,28 +325,24 @@ public class VideoSaver {
 
 
     private @Nonnull VideoSync makeVSync() {
-        VideoSync vidSync = new VideoSync(_vidItem.getAbsolutePresentationStartSector(),
-                                          getSectorsPerSecond(),
-                                          _vidItem.getSectorsPerFrame());
+        VideoSync vidSync = new VideoSync(_iAbsolutePresentationStartSector,
+                                          _discSpeed,
+                                          _sectorsPerFrame);
         return vidSync;
     }
 
-    private int getSectorsPerSecond() {
-        return _vsb.getSingleSpeed() ? 75 : 150;
-    }
-
-    private @Nonnull AudioVideoSync makeAvSync(@Nonnull ISectorAudioDecoder audio) {
+    private @Nonnull AudioVideoSync makeAvSync(@Nonnull ISectorClaimToFrameAndAudio audio) {
         AudioVideoSync avSync = new AudioVideoSync(
-                _vidItem.getAbsolutePresentationStartSector(),
-                getSectorsPerSecond(),
-                _vidItem.getSectorsPerFrame(),
+                _iAbsolutePresentationStartSector,
+                _discSpeed,
+                _sectorsPerFrame,
                 audio.getAbsolutePresentationStartSector(),
                 audio.getSampleFramesPerSecond(),
                 _vsb.getEmulatePsxAvSync());
         return avSync;
     }
 
-    private @Nonnull File getAviFile() {
+    private @Nonnull File getVideoFile() {
         return VideoFileNameFormatter.singleFile(_directory, _vidItem, _videoFormat);
     }
 
@@ -345,7 +353,7 @@ public class VideoSaver {
 
     // ==============
 
-    private static class FrameToBitstreamFilter extends Frame2Bitstream {
+    private static class FrameToBitstreamOrMdecFilter extends Frame2BitstreamOrMdec {
 
         @CheckForNull
         private final FrameLookup _startFrame;
@@ -359,12 +367,12 @@ public class VideoSaver {
         private FrameNumber _currentFrame = null;
         private boolean _blnIsDone = false;
 
-        public FrameToBitstreamFilter(@Nonnull FrameNumber.Type frameNumberType,
-                                      @CheckForNull FrameLookup startFrame,
-                                      @CheckForNull FrameLookup endFrame,
-                                      @Nonnull ILocalizedLogger log)
+        public FrameToBitstreamOrMdecFilter(@Nonnull FrameNumber.Type frameNumberType,
+                                            @CheckForNull FrameLookup startFrame,
+                                            @CheckForNull FrameLookup endFrame,
+                                            @Nonnull ILocalizedLogger log)
         {
-            super(frameNumberType);
+            super(frameNumberType, log);
             _startFrame = startFrame;
             _endFrame = endFrame;
             _log = log;

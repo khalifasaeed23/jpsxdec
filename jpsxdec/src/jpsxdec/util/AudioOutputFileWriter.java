@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -124,6 +124,7 @@ public class AudioOutputFileWriter implements Runnable, Closeable {
 
     }
 
+    @Override
     public void run() {
         try {
             // start writing the audio file
@@ -145,7 +146,7 @@ public class AudioOutputFileWriter implements Runnable, Closeable {
         }
     }
 
-    public void write(@Nonnull byte[] abData, int iOffset, int iLength)
+    public void write(@Nonnull byte[] abData, int iOffset, int iByteLength)
             throws IOException
     {
         // check if there has been an error in the writing thread
@@ -158,7 +159,7 @@ public class AudioOutputFileWriter implements Runnable, Closeable {
             }
         }
 
-        _feedStream.write(abData, iOffset, iLength);
+        _feedStream.write(abData, iOffset, iByteLength);
 
         // again check if there has been an error in the writing thread
         synchronized (_threadInputStream) {
@@ -175,6 +176,7 @@ public class AudioOutputFileWriter implements Runnable, Closeable {
         return _format;
     }
 
+    @Override
     public void close() throws IOException {
 
         // flush out the rest of the data written before closing the stream

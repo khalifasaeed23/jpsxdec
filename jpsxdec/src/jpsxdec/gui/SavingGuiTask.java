@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -44,6 +44,7 @@ import java.util.List;
 import java.util.logging.Level;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
+import javax.swing.SwingWorker;
 import jpsxdec.gui.SavingGuiTable.Row;
 import jpsxdec.i18n.I;
 import jpsxdec.i18n.ILocalizedMessage;
@@ -52,9 +53,8 @@ import jpsxdec.i18n.exception.LoggedFailure;
 import jpsxdec.i18n.log.ProgressLogger;
 import jpsxdec.i18n.log.UserFriendlyLogger;
 import jpsxdec.util.TaskCanceledException;
-import org.jdesktop.swingworker.SwingWorker;
 
-public class SavingGuiTask extends SwingWorker<Void, SavingGuiTask.Event_Message> 
+public class SavingGuiTask extends SwingWorker<Void, SavingGuiTask.Event_Message>
         implements UserFriendlyLogger.OnWarnErr
 {
     public static final String ALL_DONE = "alldone";
@@ -66,10 +66,11 @@ public class SavingGuiTask extends SwingWorker<Void, SavingGuiTask.Event_Message
     @CheckForNull
     private Row _currentRow;
 
-    
+
     final ProgressLogger _progressLog = new ProgressLogger(I.SAVE_LOG_FILE_BASE_NAME().getLocalizedMessage())
     {
 
+        @Override
         protected void handleProgressStart() throws TaskCanceledException {
             if (isCancelled())
                 throw new TaskCanceledException();
@@ -77,11 +78,13 @@ public class SavingGuiTask extends SwingWorker<Void, SavingGuiTask.Event_Message
                 EventQueue.invokeLater(new Event_Progress(_currentRow, SavingGuiTable.PROGRESS_STARTED));
         }
 
+        @Override
         protected void handleProgressEnd() throws TaskCanceledException {
             if (_currentRow != null)
                 EventQueue.invokeLater(new Event_Progress(_currentRow, SavingGuiTable.PROGRESS_DONE));
         }
 
+        @Override
         protected void handleProgressUpdate(double dblPercentComplete) throws TaskCanceledException {
             if (isCancelled())
                 throw new TaskCanceledException();
@@ -90,11 +93,13 @@ public class SavingGuiTask extends SwingWorker<Void, SavingGuiTask.Event_Message
                                                           (int)Math.round(dblPercentComplete * 100)));
         }
 
+        @Override
         public void event(@Nonnull ILocalizedMessage msg) {
             if (_currentRow != null)
                 publish(new Event_Message(_currentRow, msg));
         }
 
+        @Override
         public boolean isSeekingEvent() {
             // TODO: only seek event after so many seconds
             return true;
@@ -111,10 +116,12 @@ public class SavingGuiTask extends SwingWorker<Void, SavingGuiTask.Event_Message
         _progressLog.setListener(this);
     }
 
+    @Override
     public void onWarn(@Nonnull ILocalizedMessage msg) {
         if (_currentRow != null)
             EventQueue.invokeLater(new Event_Warning(_currentRow));
     }
+    @Override
     public void onErr(@Nonnull ILocalizedMessage msg) {
         if (_currentRow != null)
             EventQueue.invokeLater(new Event_Error(_currentRow));
@@ -155,6 +162,7 @@ public class SavingGuiTask extends SwingWorker<Void, SavingGuiTask.Event_Message
     @Override
     final protected void process(@Nonnull List<Event_Message> events) {
         // only process the last event
+        // XXX TODO BUG This can skip the 'Done' event so the last operation is left in the cell
         events.get(events.size()-1).run();
     }
 
@@ -164,25 +172,30 @@ public class SavingGuiTask extends SwingWorker<Void, SavingGuiTask.Event_Message
         @Nonnull
         protected final Row _row;
         public Event(@Nonnull Row row) { _row = row; }
+        @Override
         abstract public void run();
     }
     private class Event_Warning extends Event {
         public Event_Warning(@Nonnull Row row) { super(row); }
+        @Override
         public void run() { _row.incWarn(); }
     }
     private class Event_Error extends Event {
         public Event_Error(@Nonnull Row row) { super(row); }
+        @Override
         public void run() { _row.incErr(); }
     }
     private static class Event_Progress extends Event {
         private final int _val;
         public Event_Progress(@Nonnull Row row, int val) { super(row); _val = val; }
+        @Override
         public void run() { _row.setProgress(_val); }
     }
     public static class Event_Message extends Event {
         @Nonnull
         private final ILocalizedMessage _val;
         public Event_Message(@Nonnull Row row, @Nonnull ILocalizedMessage val) { super(row); _val = val; }
+        @Override
         public void run() { _row.setMessage(_val.getLocalizedMessage()); }
     }
 

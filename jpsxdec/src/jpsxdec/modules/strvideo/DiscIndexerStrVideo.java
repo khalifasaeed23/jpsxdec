@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -37,30 +37,25 @@
 
 package jpsxdec.modules.strvideo;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-import java.util.ListIterator;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
-import jpsxdec.cdreaders.CdFileSectorReader;
+import jpsxdec.cdreaders.ICdSectorReader;
 import jpsxdec.discitems.DiscItem;
 import jpsxdec.discitems.SerializedDiscItem;
 import jpsxdec.i18n.exception.LocalizedDeserializationFail;
 import jpsxdec.i18n.log.ILocalizedLogger;
-import jpsxdec.indexing.DiscIndex;
-import jpsxdec.indexing.DiscIndexer;
 import jpsxdec.modules.SectorClaimSystem;
+import jpsxdec.modules.SectorRange;
 import jpsxdec.modules.video.framenumber.HeaderFrameNumber;
 import jpsxdec.modules.video.framenumber.IndexSectorFrameNumber;
-import jpsxdec.modules.video.sectorbased.DemuxedFrameWithNumberAndDims;
+import jpsxdec.modules.video.sectorbased.DiscIndexerSectorBasedVideo;
 import jpsxdec.modules.video.sectorbased.DiscItemSectorBasedVideoStream;
+import jpsxdec.modules.video.sectorbased.SectorBasedDemuxedFrameWithNumberAndDims;
 import jpsxdec.modules.video.sectorbased.SectorBasedVideoInfoBuilder;
-import jpsxdec.modules.xa.DiscItemXaAudioStream;
 
 /** Searches for most common video streams. */
-public class DiscIndexerStrVideo extends DiscIndexer implements DemuxedFrameWithNumberAndDims.Listener
+public class DiscIndexerStrVideo extends DiscIndexerSectorBasedVideo.SubIndexer
+        implements SectorBasedDemuxedFrameWithNumberAndDims.Listener
 {
 
     /** Builds a single stream. */
@@ -76,7 +71,7 @@ public class DiscIndexerStrVideo extends DiscIndexer implements DemuxedFrameWith
         private final boolean _blnHasSpecialBs;
 
 
-        public VidBuilder(@Nonnull DemuxedFrameWithNumberAndDims firstFrame) {
+        public VidBuilder(@Nonnull SectorBasedDemuxedFrameWithNumberAndDims firstFrame) {
             _iLastFrameNumber = firstFrame.getHeaderFrameNumber();
             _vidInfoBuilder = new SectorBasedVideoInfoBuilder(
                     firstFrame.getWidth(), firstFrame.getHeight(),
@@ -87,7 +82,7 @@ public class DiscIndexerStrVideo extends DiscIndexer implements DemuxedFrameWith
         }
 
         /** @return if the frame was accepted as part of this video, otherwise start a new video. */
-        public boolean addFrame(@Nonnull DemuxedFrameWithNumberAndDims frame) {
+        public boolean addFrame(@Nonnull SectorBasedDemuxedFrameWithNumberAndDims frame) {
             if (frame.getWidth() != _vidInfoBuilder.getWidth() ||
                 frame.getHeight() != _vidInfoBuilder.getHeight() ||
                 frame.getStartSector() > _vidInfoBuilder.getEndSector() + 100 ||
@@ -108,7 +103,7 @@ public class DiscIndexerStrVideo extends DiscIndexer implements DemuxedFrameWith
             return true;
         }
 
-        public @Nonnull DiscItemSectorBasedVideoStream endOfMovie(@Nonnull CdFileSectorReader cd) {
+        public @Nonnull DiscItemSectorBasedVideoStream endOfMovie(@Nonnull ICdSectorReader cd) {
             return new DiscItemStrVideoStream(cd,
                     _vidInfoBuilder.getStartSector(), _vidInfoBuilder.getEndSector(),
                     _vidInfoBuilder.makeDims(),
@@ -120,19 +115,12 @@ public class DiscIndexerStrVideo extends DiscIndexer implements DemuxedFrameWith
 
     }
 
-    @Nonnull
-    private final ILocalizedLogger _errLog;
-    private final Collection<DiscItemSectorBasedVideoStream> _completedVideos = new ArrayList<DiscItemSectorBasedVideoStream>();
-    private final StrVideoSectorToDemuxedStrFrame _videoDemuxer = new StrVideoSectorToDemuxedStrFrame(this);
+    private final StrVideoSectorToDemuxedStrFrame _videoDemuxer = new StrVideoSectorToDemuxedStrFrame(SectorRange.ALL, this);
     @CheckForNull
     private VidBuilder _videoBuilder;
 
-    public DiscIndexerStrVideo(@Nonnull ILocalizedLogger errLog) {
-        _errLog = errLog;
-    }
-
     @Override
-    public @CheckForNull DiscItem deserializeLineRead(@Nonnull SerializedDiscItem fields) 
+    public @CheckForNull DiscItem deserializeLineRead(@Nonnull SerializedDiscItem fields)
             throws LocalizedDeserializationFail
     {
         if (DiscItemStrVideoStream.TYPE_ID.equals(fields.getType()))
@@ -142,11 +130,11 @@ public class DiscIndexerStrVideo extends DiscIndexer implements DemuxedFrameWith
 
     @Override
     public void attachToSectorClaimer(@Nonnull SectorClaimSystem scs) {
-        SectorClaimToStrVideoSector s2sv = scs.getClaimer(SectorClaimToStrVideoSector.class);
-        s2sv.setListener(_videoDemuxer);
+        scs.addIdListener(_videoDemuxer);
     }
 
-    public void frameComplete(@Nonnull DemuxedFrameWithNumberAndDims frame, @Nonnull ILocalizedLogger log) {
+    @Override
+    public void frameComplete(@Nonnull SectorBasedDemuxedFrameWithNumberAndDims frame, @Nonnull ILocalizedLogger log) {
         if (_videoBuilder != null && !_videoBuilder.addFrame(frame))
             endOfVideo(log);
         if (_videoBuilder == null)
@@ -157,65 +145,12 @@ public class DiscIndexerStrVideo extends DiscIndexer implements DemuxedFrameWith
             return;
 
         DiscItemSectorBasedVideoStream video = _videoBuilder.endOfMovie(getCd());
-        _completedVideos.add(video);
-        addDiscItem(video);
+        addVideo(video);
         _videoBuilder = null;
     }
+    @Override
     public void endOfSectors(@Nonnull ILocalizedLogger log) {
         endOfVideo(log);
-    }
-
-
-    @Override
-    public void listPostProcessing(@Nonnull Collection<DiscItem> allItems) {
-        if (_completedVideos.size() > 0)
-            audioSplit(_completedVideos, allItems);
-    }
-
-    // TODO probably should move this to a shared place
-    public static void audioSplit(@Nonnull Collection<? extends DiscItemSectorBasedVideoStream> videos,
-                                  @Nonnull Collection<DiscItem> allItems)
-    {
-        List<DiscItemXaAudioStream> added = new ArrayList<DiscItemXaAudioStream>();
-
-        for (Iterator<DiscItem> it = allItems.iterator(); it.hasNext();) {
-            DiscItem item = it.next();
-            if (item instanceof DiscItemXaAudioStream) {
-                DiscItemXaAudioStream audio = (DiscItemXaAudioStream) item;
-                for (DiscItemSectorBasedVideoStream video : videos) {
-                    int iSector = video.findAudioSplitPoint(audio);
-                    if (iSector >= 0) {
-                        DiscItemXaAudioStream[] aoSplit = audio.split(iSector);
-                        it.remove();
-                        added.add(aoSplit[0]);
-                        added.add(aoSplit[1]);
-                        break; // will continue later with split items
-                    }
-                }
-            }
-        }
-
-        // now process the new items
-        for (ListIterator<DiscItemXaAudioStream> it = added.listIterator(); it.hasNext();) {
-            DiscItemXaAudioStream audio = it.next();
-            for (DiscItemSectorBasedVideoStream video : videos) {
-                int iSector = video.findAudioSplitPoint(audio);
-                if (iSector >= 0) {
-                    DiscItemXaAudioStream[] aoSplit = audio.split(iSector);
-                    it.remove();
-                    it.add(aoSplit[0]);
-                    it.add(aoSplit[1]);
-                    it.previous(); // jump to before the split items
-                    it.previous();
-                    break; // will continue with split items
-                }
-            }
-        }
-        allItems.addAll(added);
-    }
-
-    @Override
-    public void indexGenerated(@Nonnull DiscIndex index) {
     }
 
 }

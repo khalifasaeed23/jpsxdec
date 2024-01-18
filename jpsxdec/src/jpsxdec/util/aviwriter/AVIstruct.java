@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -54,22 +54,22 @@ abstract class AVIstruct {
         if (s.length() != 4) throw new IllegalArgumentException();
         return IO.readSInt32LE(Misc.stringToAscii(s), 0);
     }
-    
+
     public abstract void write(@Nonnull RandomAccessFile raf) throws IOException;
     public abstract int sizeof();
-    
+
     private long _lngPlaceholder;
-    
+
     public void makePlaceholder(@Nonnull RandomAccessFile raf) throws IOException {
         _lngPlaceholder = raf.getFilePointer();
         raf.write(new byte[this.sizeof()]);
     }
-    
+
     public void goBackAndWrite(@Nonnull RandomAccessFile raf) throws IOException {
         long lngCurPos = raf.getFilePointer(); // save this pos
         raf.seek(_lngPlaceholder); // go back
         this.write(raf); // write the data
         raf.seek(lngCurPos); // return to current position
     }
-    
+
 }

@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2014-2019  Michael Sabin
+ * Copyright (C) 2014-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -47,9 +47,9 @@ import jpsxdec.adpcm.XaAdpcmDecoder;
  * XA audio is part of the "Green Book" standard, so should be part of the
  * CD package.  */
 public class XaAnalysis {
-    
+
     private static final Logger LOG = Logger.getLogger(XaAnalysis.class.getName());
-    
+
     public final int iSamplesPerSecond;
     public final int iBitsPerSample;
     public final boolean blnStereo;
@@ -68,22 +68,33 @@ public class XaAnalysis {
 
 
     /** Analyzes a CD sector to determine if it is a XA audio sector.
-     * @param iMaxValidChannel Max subheader channel that will be accepted as XA. 254 is a good value.
      * @return null if definitely not a XA audio sector. */
-    public static @CheckForNull XaAnalysis analyze(@Nonnull CdSector cdSector, int iMaxValidChannel) {
+    public static @CheckForNull XaAnalysis analyze(@Nonnull CdSector cdSector) {
         if (cdSector.getType() != CdSector.Type.MODE2FORM2)
             return null;
 
         CdSectorXaSubHeader sh = cdSector.getSubHeader();
-        if (sh == null) return null;
-        if (sh.getSubMode().mask(CdSectorXaSubHeader.SubMode.MASK_FORM | CdSectorXaSubHeader.SubMode.MASK_AUDIO) !=
-                                (CdSectorXaSubHeader.SubMode.MASK_FORM | CdSectorXaSubHeader.SubMode.MASK_AUDIO)) return null;
-        // Ace Combat 3 has several sectors with channel 255
-        // They seem to be "null" sectors
-        if (sh.getChannel() < 0 || sh.getChannel() > iMaxValidChannel) return null;
+        if (sh == null)
+            return null;
+
+        if (sh.getSubMode().mask(CdSectorXaSubHeader.SubMode.MASK_FORM  |
+                                 CdSectorXaSubHeader.SubMode.MASK_AUDIO |
+                                 CdSectorXaSubHeader.SubMode.MASK_DATA  |
+                                 CdSectorXaSubHeader.SubMode.MASK_VIDEO |
+                                 CdSectorXaSubHeader.SubMode.MASK_REAL_TIME)
+                                 !=
+                                (CdSectorXaSubHeader.SubMode.MASK_FORM  |
+                                 CdSectorXaSubHeader.SubMode.MASK_AUDIO |
+                                 CdSectorXaSubHeader.SubMode.MASK_REAL_TIME))
+        {
+            return null;
+        }
+
+        if (sh.getChannel() < 0 || sh.getChannel() > 255)
+            throw new RuntimeException("This should never happen");
 
         boolean blnStereo = sh.getCodingInfo().isStereo();
-        int iSamplesPerSecond = sh.getCodingInfo().getSampleRate();
+        int iSamplesPerSecond = sh.getCodingInfo().getSamplesPerSecond();
         int iBitsPerSample = sh.getCodingInfo().getBitsPerSample();
 
         // TODO: check Sound Parameters values that the index is valid

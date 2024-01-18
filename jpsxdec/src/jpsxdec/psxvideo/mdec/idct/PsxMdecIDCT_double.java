@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -56,6 +56,7 @@ public class PsxMdecIDCT_double implements IDCT_double {
 
     private final double[] _aTemp = new double[64];
 
+    @Override
     public void IDCT(double[] idctMatrix, int iOutputOffset, double[] output) {
         double tempSum;
         int x;
@@ -67,9 +68,9 @@ public class PsxMdecIDCT_double implements IDCT_double {
                 tempSum = 0;
 
                 for (i=0; i<8; i++) {
-                    tempSum += (idctMatrix[x + i*8] * PSX_DEFAULT_COSINE_MATRIX[i*8 + y]);
+                    tempSum += idctMatrix[x + i*8] * PSX_DEFAULT_COSINE_MATRIX[y + i*8];
                 }
-                
+
                 _aTemp[x + y*8] = tempSum;
             }
         }
@@ -79,8 +80,7 @@ public class PsxMdecIDCT_double implements IDCT_double {
                 tempSum = 0;
 
                 for (i=0; i<8; i++) {
-                    tempSum += (PSX_DEFAULT_COSINE_MATRIX[x + i*8] *
-                                   _aTemp[i + y*8]);
+                    tempSum += PSX_DEFAULT_COSINE_MATRIX[x + i*8] * _aTemp[i + y*8];
                 }
 
                 output[iOutputOffset + x + y*8] = tempSum;
@@ -112,7 +112,7 @@ public class PsxMdecIDCT_double implements IDCT_double {
                 tempSum = 0;
 
                 for (i=0; i<8; i++) {
-                    tempSum += PSX_DEFAULT_COSINE_MATRIX[x + i*8] * _aTemp[i*8 + y];
+                    tempSum += PSX_DEFAULT_COSINE_MATRIX[i + x*8] * _aTemp[i + y*8];
                 }
 
                 output[iOutputOffset + x + y*8] = tempSum;
@@ -120,6 +120,7 @@ public class PsxMdecIDCT_double implements IDCT_double {
         }
     }
 
+    @Override
     public void IDCT_1NonZero(double[] idctMatrix, int iNonZeroPos, int iOutputOffset, double[] output) {
         IDCT(idctMatrix, iOutputOffset, output);
     }

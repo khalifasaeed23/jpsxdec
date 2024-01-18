@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -41,47 +41,50 @@ import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 import jpsxdec.i18n.exception.LoggedFailure;
 import jpsxdec.i18n.log.ILocalizedLogger;
+import jpsxdec.modules.IdentifiedSectorListener;
+import jpsxdec.modules.SectorRange;
 
 
-public class SquareAudioSectorToSquareAudioSectorPair implements SectorClaimToSquareAudioSector.Listener {
+public class SquareAudioSectorToSquareAudioSectorPair implements IdentifiedSectorListener<ISquareAudioSector> {
     public interface Listener {
         void pairDone(@Nonnull SquareAudioSectorPair pair, @Nonnull ILocalizedLogger log)
                 throws LoggedFailure;
         void endOfSectors(@Nonnull ILocalizedLogger log);
     }
 
-    @CheckForNull
-    private Listener _listener;
+    @Nonnull
+    private final SectorRange _sectorRange;
+    @Nonnull
+    private final Listener _listener;
+
     @CheckForNull
     private ISquareAudioSector _leftAudioSector;
 
-    public SquareAudioSectorToSquareAudioSectorPair() {
-    }
-    public SquareAudioSectorToSquareAudioSectorPair(@Nonnull Listener listener) {
-        _listener = listener;
-    }
-    public void setListener(@CheckForNull Listener listener) {
+    public SquareAudioSectorToSquareAudioSectorPair(@Nonnull SectorRange sectorRange, @Nonnull Listener listener) {
+        _sectorRange = sectorRange;
         _listener = listener;
     }
 
-    public void sectorRead(@Nonnull ISquareAudioSector audSector, @Nonnull ILocalizedLogger log) 
-            throws LoggedFailure
-    {
+    @Override
+    public @Nonnull Class<ISquareAudioSector> getListeningFor() {
+        return ISquareAudioSector.class;
+    }
+
+    @Override
+    public void feedSector(@Nonnull ISquareAudioSector audSector, @Nonnull ILocalizedLogger log) throws LoggedFailure {
 
         if (_leftAudioSector != null) {
             if (isPair(_leftAudioSector, audSector)) {
-                if (_listener != null)
-                    _listener.pairDone(new SquareAudioSectorPair(
-                                       _leftAudioSector, audSector,
-                                       _leftAudioSector.getHeaderFrameNumber(),
-                                       _leftAudioSector.getSampleFramesPerSecond(),
-                                       _leftAudioSector.getSoundUnitCount(),
-                                       _leftAudioSector.getSectorNumber(),
-                                       audSector.getSectorNumber()),
-                                       log); // both != null
+                _listener.pairDone(new SquareAudioSectorPair(
+                                   _leftAudioSector, audSector,
+                                   _leftAudioSector.getHeaderFrameNumber(),
+                                   _leftAudioSector.getSampleFramesPerSecond(),
+                                   _leftAudioSector.getSoundUnitCount(),
+                                   _leftAudioSector.getSectorNumber(),
+                                   audSector.getSectorNumber()),
+                                   log); // both != null
                 _leftAudioSector = null;
             } else {
-                if (_listener != null)
                     leftOnlyDone(log);
                 _leftAudioSector = audSector;
             }
@@ -89,15 +92,14 @@ public class SquareAudioSectorToSquareAudioSectorPair implements SectorClaimToSq
             if (audSector.isLeftChannel()) {
                 _leftAudioSector = audSector;
             } else {
-                if (_listener != null)
-                    _listener.pairDone(new SquareAudioSectorPair(
-                                       null, audSector,
-                                       audSector.getHeaderFrameNumber(),
-                                       audSector.getSampleFramesPerSecond(),
-                                       audSector.getSoundUnitCount(),
-                                       audSector.getSectorNumber(),
-                                       audSector.getSectorNumber()),
-                                       log); // left == null
+                _listener.pairDone(new SquareAudioSectorPair(
+                                   null, audSector,
+                                   audSector.getHeaderFrameNumber(),
+                                   audSector.getSampleFramesPerSecond(),
+                                   audSector.getSoundUnitCount(),
+                                   audSector.getSectorNumber(),
+                                   audSector.getSectorNumber()),
+                                   log); // left == null
             }
         }
     }
@@ -123,12 +125,11 @@ public class SquareAudioSectorToSquareAudioSectorPair implements SectorClaimToSq
                 left.getSectorNumber() + 1 == right.getSectorNumber();
     }
 
-    public void endOfSectors(@Nonnull ILocalizedLogger log) throws LoggedFailure {
-        if (_listener != null) {
-            if (_leftAudioSector != null)
-                leftOnlyDone(log);
-            _listener.endOfSectors(log);
-        }
+    @Override
+    public void endOfFeedSectors(@Nonnull ILocalizedLogger log) throws LoggedFailure {
+        if (_leftAudioSector != null)
+            leftOnlyDone(log);
+        _listener.endOfSectors(log);
         _leftAudioSector = null;
     }
 

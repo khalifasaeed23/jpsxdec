@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2012-2019  Michael Sabin
+ * Copyright (C) 2012-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -37,8 +37,14 @@
 
 package jpsxdec.modules.video.sectorbased;
 
+import com.jhlabs.awt.ParagraphLayout;
 import java.awt.BorderLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import javax.annotation.Nonnull;
+import javax.swing.ButtonGroup;
+import javax.swing.JLabel;
+import javax.swing.JRadioButton;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.event.ChangeEvent;
@@ -51,6 +57,7 @@ import jpsxdec.gui.SavingGuiTable;
 import jpsxdec.i18n.I;
 import jpsxdec.i18n.ILocalizedMessage;
 import jpsxdec.modules.video.save.VideoSaverPanel;
+import jpsxdec.util.Fraction;
 
 
 public class SectorBasedVideoSaverBuilderGui extends DiscItemSaverBuilderGui {
@@ -74,7 +81,51 @@ public class SectorBasedVideoSaverBuilderGui extends DiscItemSaverBuilderGui {
 
         public PPanel(@Nonnull CombinedBuilderListener<SectorBasedVideoSaverBuilder> bh) {
             super(bh);
-            _bl.addListeners(new EmulateAv());
+            _bl.addListeners(new DiscSpeed(), new EmulateAv());
+        }
+
+        private class DiscSpeed implements ChangeListener, ActionListener {
+            final ButtonGroup __grp = new ButtonGroup();
+            final JLabel __label = new JLabel(I.GUI_DISC_SPEED_LABEL().getLocalizedMessage());
+            final JLabel __fps = new JLabel();
+            boolean __cur;
+            final JRadioButton __1x = new JRadioButton(I.DISC_SPEED_1X().getLocalizedMessage()),
+                               __2x = new JRadioButton(I.DISC_SPEED_2X().getLocalizedMessage());
+            public DiscSpeed() {
+                add(__label, ParagraphLayout.NEW_PARAGRAPH);
+                add(__1x);
+                add(__2x);
+                __grp.add(__1x);
+                __grp.add(__2x);
+                __1x.addActionListener(this);
+                __2x.addActionListener(this);
+                add(__fps);
+            }
+            public void stateChanged(ChangeEvent e) {
+                updateFps();
+                boolean blnEnabled = _bl.getBuilder().getSingleSpeed_enabled();
+                __label.setEnabled(blnEnabled);
+                __1x.setEnabled(blnEnabled);
+                __2x.setEnabled(blnEnabled);
+                if (_bl.getBuilder().getSingleSpeed())
+                    __grp.setSelected(__1x.getModel(), true);
+                else
+                    __grp.setSelected(__2x.getModel(), true);
+            }
+            public void actionPerformed(ActionEvent e) {
+                if (e.getSource() == __1x)
+                    _bl.getBuilder().setSingleSpeed(true);
+                else
+                    _bl.getBuilder().setSingleSpeed(false);
+            }
+            private void updateFps() {
+                Fraction fps = _bl.getBuilder().getFps();
+                if ((fps.getNumerator() % fps.getDenominator()) == 0)
+                    __fps.setText(I.GUI_FPS_LABLE_WHOLE_NUMBER(fps.getNumerator() / fps.getDenominator()).getLocalizedMessage());
+                else
+                    __fps.setText(I.GUI_FPS_LABEL_FRACTION(fps.asDouble(),
+                                  fps.getNumerator(), fps.getDenominator()).getLocalizedMessage());
+            }
         }
 
         private class EmulateAv extends AbstractCheck {
@@ -122,20 +173,20 @@ public class SectorBasedVideoSaverBuilderGui extends DiscItemSaverBuilderGui {
         public void set(SectorBasedVideoSaverBuilder bldr, int i, Object val) {}
 
         @Nonnull
-        private final Class _type;
+        private final Class<?> _type;
         @Nonnull
         private final ILocalizedMessage _name;
 
-        private COLUMNS(@Nonnull Class type, @Nonnull ILocalizedMessage name) {
+        private COLUMNS(@Nonnull Class<?> type, @Nonnull ILocalizedMessage name) {
             _type = type;
             _name = name;
         }
 
-        final public Class type() { return _type; };
+        final public Class<?> type() { return _type; }
         @Override
         final public String toString() { return _name.getLocalizedMessage(); }
     }
-    
+
     private class ParallelAudio extends AbstractTableModel implements ChangeListener {
 
         @Nonnull final JTable __tbl;
@@ -147,34 +198,42 @@ public class SectorBasedVideoSaverBuilderGui extends DiscItemSaverBuilderGui {
             SavingGuiTable.autoResizeColWidth(__tbl); // TODO: bad dependency
         }
 
+        @Override
         public int getRowCount() {
             return _bh.getBuilder().getParallelAudioCount();
         }
 
+        @Override
         public int getColumnCount() {
             return COLUMNS.values().length;
         }
 
+        @Override
         public String getColumnName(int columnIndex) {
             return COLUMNS.values()[columnIndex].toString();
         }
 
+        @Override
         public Class<?> getColumnClass(int columnIndex) {
             return COLUMNS.values()[columnIndex].type();
         }
 
+        @Override
         public boolean isCellEditable(int rowIndex, int columnIndex) {
             return COLUMNS.values()[columnIndex].editable();
         }
 
+        @Override
         public Object getValueAt(int rowIndex, int columnIndex) {
             return COLUMNS.values()[columnIndex].get(_bh.getBuilder(), rowIndex);
         }
 
+        @Override
         public void setValueAt(Object aValue, int rowIndex, int columnIndex) {
             COLUMNS.values()[columnIndex].set(_bh.getBuilder(), rowIndex, aValue);
         }
 
+        @Override
         public void stateChanged(ChangeEvent e) {
             __tbl.setEnabled(_bh.getBuilder().getParallelAudio_enabled());
             this.fireTableDataChanged();

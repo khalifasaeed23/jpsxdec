@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2016-2019  Michael Sabin
+ * Copyright (C) 2016-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -92,7 +92,7 @@ public class SoundUnitDecoder {
                 telemetry.adblPrev2Samples[i] = context.getPreviousPCMSample2();
                 telemetry.adblDecodedPcmSamples[i] = dblDecodedPcm;
             }
-            
+
             // let the context scale, round, and clamp
             short siPcmSample = context.saveScaleRoundClampPCMSample(dblDecodedPcm);
             // finally return the polished sample

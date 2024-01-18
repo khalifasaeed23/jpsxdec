@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2015-2019  Michael Sabin
+ * Copyright (C) 2015-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -39,7 +39,7 @@ package jpsxdec.modules.video.sectorbased;
 
 import java.util.logging.Logger;
 import javax.annotation.Nonnull;
-import jpsxdec.modules.video.Dimensions;
+import jpsxdec.discitems.Dimensions;
 import jpsxdec.modules.video.sectorbased.fps.StrFrameRateCalc;
 import jpsxdec.util.Fraction;
 
@@ -51,7 +51,7 @@ public class SectorBasedVideoInfoBuilder {
 
     private final int _iStartSector;
     private int _iEndSector;
-    
+
     @Nonnull
     private final StrFrameRateCalc _fpsCalc;
     private final int _iFrame1PresentationSector;
@@ -69,7 +69,7 @@ public class SectorBasedVideoInfoBuilder {
         _iFrameCount = 1;
     }
 
-    public void next(@Nonnull int iStartSector, int iEndSector) {
+    public void next(int iStartSector, int iEndSector) {
         if (iStartSector < _iStartSector || iEndSector < _iEndSector)
             throw new IllegalArgumentException("Adding frame with strange sector range");
         _iEndSector = iEndSector;
@@ -104,7 +104,7 @@ public class SectorBasedVideoInfoBuilder {
 
     /** Watch out, once this is called, this object cannot accept any more frames. */
     private @Nonnull Fraction getSectorsPerFrame() {
-        Fraction sectorsPerFrame = _fpsCalc.getSectorsPerFrame();
+        Fraction sectorsPerFrame = _fpsCalc.getSectorsPerFrame(_iStartSector, _iEndSector, _iFrameCount);
         if (sectorsPerFrame == null) {
             sectorsPerFrame = new Fraction(getSectorLength(), _iFrameCount);
         }

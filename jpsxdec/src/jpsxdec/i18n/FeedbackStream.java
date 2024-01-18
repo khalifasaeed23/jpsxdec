@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -150,11 +150,13 @@ public class FeedbackStream {
 
     private class FbsLogger implements ILocalizedLogger {
 
+        @Override
         public void log(@Nonnull Level level, @Nonnull ILocalizedMessage msg) {
             log(level, msg, null);
         }
 
-        public void log(@Nonnull Level level, @Nonnull ILocalizedMessage msg, 
+        @Override
+        public void log(@Nonnull Level level, @Nonnull ILocalizedMessage msg,
                         @CheckForNull Throwable debugException)
         {
             LOG.log(level, msg.getEnglishMessage(), debugException);

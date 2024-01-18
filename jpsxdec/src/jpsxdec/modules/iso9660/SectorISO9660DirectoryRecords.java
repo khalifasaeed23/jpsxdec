@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -55,7 +55,7 @@ public class SectorISO9660DirectoryRecords extends IdentifiedSector
 
     @CheckForNull
     private ArrayList<DirectoryRecord> _dirRecords;
-    
+
     public SectorISO9660DirectoryRecords(@Nonnull CdSector cdSector) {
         super(cdSector);
         if (isSuperInvalidElseReset()) return;
@@ -66,19 +66,17 @@ public class SectorISO9660DirectoryRecords extends IdentifiedSector
         ByteArrayFPIS sectStream = cdSector.getCdUserDataStream();
         try {
             firstRec = new DirectoryRecord(sectStream);
-        } catch (IOException ex) {
-            return;
-        } catch (BinaryDataNotRecognized ex) {
+        } catch (IOException | BinaryDataNotRecognized ex) {
             return;
         }
-        
+
         _dirRecords = new ArrayList<DirectoryRecord>();
         _dirRecords.add(firstRec);
         try {
             while (true) {
                 _dirRecords.add(new DirectoryRecord(sectStream));
             }
-        } catch (BinaryDataNotRecognized ex) {} catch (IOException ex) {}
+        } catch (BinaryDataNotRecognized | IOException ex) {}
 
         setProbability(100);
     }
@@ -91,10 +89,12 @@ public class SectorISO9660DirectoryRecords extends IdentifiedSector
         return getCdSector().getCdUserDataStream();
     }
 
+    @Override
     public @Nonnull String getTypeName() {
         return "ISO9660 Directory Records";
     }
 
+    @Override
     public @Nonnull Iterator<DirectoryRecord> iterator() {
         if (_dirRecords == null)
             throw new IllegalStateException();

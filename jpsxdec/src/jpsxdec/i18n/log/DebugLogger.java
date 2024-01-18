@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2016-2019  Michael Sabin
+ * Copyright (C) 2016-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -54,16 +54,18 @@ public class DebugLogger implements ILocalizedLogger {
     private DebugLogger() {
     }
 
+    @Override
     public void log(@Nonnull Level level, @Nonnull ILocalizedMessage msg) {
         msg.logEnglish(LOG, level);
         System.out.println(msg.getEnglishMessage());
     }
 
+    @Override
     public void log(@Nonnull Level level, @Nonnull ILocalizedMessage msg, @CheckForNull Throwable debugException) {
         msg.logEnglish(LOG, level, debugException);
         System.out.println(msg.getEnglishMessage());
         if (debugException != null)
-            debugException.printStackTrace();
+            debugException.printStackTrace(System.out);
     }
 
 }

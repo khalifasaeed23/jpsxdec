@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -150,7 +150,7 @@ class FrameNumberNumber {
         if (iMinorDigits == 0 && iMinorValue == 0) {
             return sMajor;
         } else {
-            return sMajor + Misc.intToPadded0String(iMinorValue, iMinorDigits);
+            return sMajor + "." + Misc.intToPadded0String(iMinorValue, iMinorDigits);
         }
     }
 
@@ -175,8 +175,8 @@ class FrameNumberNumber {
 
             public void addNumber(int iFrameValue) {
                 if (iFrameValue < 0 || iFrameValue < _iEndFrameValue)
-                    // videos should end if the frame number gets smaller
-                    throw new IllegalArgumentException("Negitive frame value, or in reverse? " + iFrameValue + " < " + _iEndFrameValue);
+                    // videos should have ended if the frame number got smaller
+                    throw new IllegalArgumentException("Negative frame value, or in reverse? " + iFrameValue + " < " + _iEndFrameValue);
 
                 if (iFrameValue == _iEndFrameValue) {
                     _iDuplicate++;
@@ -208,7 +208,7 @@ class FrameNumberNumber {
             }
         }
 
-        
+
         private final int _iStartFrameValue;
         private final int _iEndFrameValue;
         private final int _iEndDuplicate;
@@ -291,7 +291,7 @@ class FrameNumberNumber {
         public @Nonnull FrameNumberNumber next(int iFrameValue) {
             if (iFrameValue < 0)
                 throw new IllegalArgumentException();
-            
+
             if (iFrameValue == _iPrevFrameValue) {
                 _iDuplicateValue++;
             } else {

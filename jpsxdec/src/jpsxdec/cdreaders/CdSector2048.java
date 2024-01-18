@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -45,9 +45,9 @@ import javax.annotation.Nonnull;
 public class CdSector2048 extends CdSector {
 
     public CdSector2048(int iSectorIndex, @Nonnull byte[] abSectorBytes,
-                        int iByteStartOffset, long lngFilePointer)
+                        int iByteStartOffset, int iFilePointer)
     {
-        super(iSectorIndex, abSectorBytes, iByteStartOffset, lngFilePointer);
+        super(iSectorIndex, abSectorBytes, iByteStartOffset, iFilePointer);
         if (iByteStartOffset + SECTOR_SIZE_2048_ISO > abSectorBytes.length)
             throw new IllegalArgumentException();
     }
@@ -57,10 +57,11 @@ public class CdSector2048 extends CdSector {
         return SECTOR_SIZE_2048_ISO;
     }
 
+    @Override
     public int getCdUserDataSize() {
         return SECTOR_USER_DATA_SIZE_MODE1_MODE2FORM1;
     }
-    
+
     @Override
     protected int getHeaderDataSize() {
         return 0;
@@ -70,6 +71,7 @@ public class CdSector2048 extends CdSector {
     public @Nonnull Type getType() {
         return Type.UNKNOWN2048;
     }
+    @Override
     public boolean isCdAudioSector() {
         return false;
     }
@@ -93,7 +95,7 @@ public class CdSector2048 extends CdSector {
     public int getErrorCount() {
         return 0;
     }
-    
+
     @Override
     public @Nonnull byte[] rebuildRawSector(@Nonnull byte[] abUserData) {
         return abUserData.clone();

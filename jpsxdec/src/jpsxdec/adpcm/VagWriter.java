@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -49,7 +49,7 @@ import jpsxdec.util.Misc;
 
 /** Writes a VAG ("very audio good") file.
  * <p>
- * VAG files seem to be a common format involved in PSX development.
+ * VAG files seem to be a common format involved in PlayStation 1 development.
  * It contains a single sound clip of SPU audio.
  * <p>
  * The file contains the following data.
@@ -101,7 +101,7 @@ public class VagWriter implements Closeable {
     private int _iWrittenSoundUnitCount = 0;
 
     /** {@link #VagWriter(java.io.File, java.lang.String, int)} with the
-     * string filename converted to {@ File}. */
+     * string filename converted to {@link File}. */
     public VagWriter(@Nonnull String sOutputFile, @Nonnull String sId, int iSampleRate)
             throws FileNotFoundException, IOException
     {
@@ -119,7 +119,7 @@ public class VagWriter implements Closeable {
         // verify valid ID
         if (!isValidId(sId))
             throw new IllegalArgumentException(sId);
-        
+
         _sId = sId;
         _iSampleRate = iSampleRate;
 
@@ -155,6 +155,7 @@ public class VagWriter implements Closeable {
 
     /** {@inheritDoc }
      * Updates the VAG header with the audio length and closes the file. */
+    @Override
     public void close() throws IOException {
         boolean blnExceptionThrown = true;
         try {

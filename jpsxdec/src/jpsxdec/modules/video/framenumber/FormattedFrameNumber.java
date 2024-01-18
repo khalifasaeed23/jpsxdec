@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -57,7 +57,7 @@ public class FormattedFrameNumber {
     public FormattedFrameNumber(int iFrameValue, int iFrameDigitLength) {
         this(iFrameValue, iFrameDigitLength, 0, 0);
     }
-    
+
     public FormattedFrameNumber(int iFrameValue, int iFrameDigitLength,
                                 int iDuplicateIndex, int iDuplicateDigitLength)
     {

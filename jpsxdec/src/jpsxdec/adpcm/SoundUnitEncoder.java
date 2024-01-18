@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2016-2019  Michael Sabin
+ * Copyright (C) 2016-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -37,7 +37,6 @@
 
 package jpsxdec.adpcm;
 
-import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.annotation.CheckForNull;
@@ -59,30 +58,38 @@ public class SoundUnitEncoder {
     /** Encoded ADPCM sound unit. */
     public static class EncodedUnit {
         /** Sound parameter filter used to encode. */
-        public final int iFilterIndex;
+        private final int _iFilterIndex;
         /** Sound parameter range used to encode. */
-        public final int iRange;
+        private final int _iRange;
         /** If at least 1 ADPCM sample had to be clamped to fit. */
-        public final boolean blnHadToClamp;
-        
+        private final boolean _blnHadToClamp;
+        /** @see #getByteOrNibble(int) */
+        @Nonnull
+        private final byte[] _abEncodedAdpcm;
+
+        private EncodedUnit(int iFilterIndex, int iRange, boolean blnHadToClamp,
+                            @Nonnull byte[] abEncodedAdpcm)
+        {
+            _iFilterIndex = iFilterIndex;
+            _iRange = iRange;
+            _blnHadToClamp = blnHadToClamp;
+            _abEncodedAdpcm = abEncodedAdpcm;
+        }
+
+        public byte getSoundParameter() {
+            return (byte) (((_iFilterIndex & 0xf) << 4) | (_iRange & 0xf));
+        }
+
         /** Encoded ADPCM data samples.
          * 8 bits/sample uses the whole byte.
          * 4 bits/sample uses the least significant nibble. */
-        @Nonnull
-        public final byte[] abEncodedAdpcm;
-
-        private EncodedUnit(int iFilterIndex, int iRange, boolean blnHadToClamp, 
-                            @Nonnull byte[] abEncodedAdpcm)
-        {
-            this.iFilterIndex = iFilterIndex;
-            this.iRange = iRange;
-            this.blnHadToClamp = blnHadToClamp;
-            this.abEncodedAdpcm = abEncodedAdpcm;
-        }
-        public byte getSoundParameter() {
-            return (byte) (((iFilterIndex & 0xf) << 4) | (iRange & 0xf));
+        public byte getByteOrNibble(int i) {
+            return _abEncodedAdpcm[i];
         }
 
+        public boolean hadToClamp() {
+            return _blnHadToClamp;
+        }
     }
 
     /** Encoding equivalent to {@link AdpcmContext}. */
@@ -131,7 +138,9 @@ public class SoundUnitEncoder {
     /** Creates an encoder to encode with the supplied filters and
      * generate ADPCM samples with the supplied bits/sample.
      * Suppling the filters as a parameters allows this class to encode for both
-     * XA ADPCM and SPU ADPCM. */
+     * XA ADPCM and SPU ADPCM.
+     * @param iAdpcmBitsPerSample 4 or 8
+     * */
     public SoundUnitEncoder(int iAdpcmBitsPerSample, @Nonnull K0K1Filter filters) {
         if (iAdpcmBitsPerSample == 4) {
             _iAdpcmBitsPerSample = 4;
@@ -152,15 +161,14 @@ public class SoundUnitEncoder {
 
     /** Encodes the PCM samples into an {@link EncodedUnit}.
      * Searches for the sound parameters with the best possible result.
-     * @param asiPcmSoundUnitSamples A {@link SoundUnitDecoder#SAMPLES_PER_SOUND_UNIT}
-     *                               worth of 16-bit samples.
+     * @param asi28PcmSamples A {@link SoundUnitDecoder#SAMPLES_PER_SOUND_UNIT}
+     *                        worth of 16-bit samples.
      * @param loggingContext  Object that will be used to give some context when logging.
      */
-    @Nonnull EncodedUnit encodeSoundUnit(@Nonnull short[] asiPcmSoundUnitSamples,
+    @Nonnull EncodedUnit encodeSoundUnit(@Nonnull short[] asi28PcmSamples,
                                          @Nonnull IContextCopier loggingContext)
-            throws IOException
     {
-        if (asiPcmSoundUnitSamples.length != SoundUnitDecoder.SAMPLES_PER_SOUND_UNIT)
+        if (asi28PcmSamples.length != SoundUnitDecoder.SAMPLES_PER_SOUND_UNIT)
             throw new IllegalArgumentException();
 
         FilterRangeEncoder best = null;
@@ -175,7 +183,7 @@ public class SoundUnitEncoder {
                 if (iRange == 0 && iFilterIdx == 0)
                     zeroRangeFilter = encTry;
 
-                if (encTry.encode(asiPcmSoundUnitSamples, loggingContext))
+                if (encTry.encode(asi28PcmSamples, loggingContext))
                     continue;
 
                 if (best == null || encTry.isBetterThan(best)) {
@@ -206,7 +214,6 @@ public class SoundUnitEncoder {
     private @Nonnull EncodedUnit encodeSoundUnit(@Nonnull short[] asiPcmSoundUnitSamples,
                                                  int iFilterIdx, int iRange,
                                                  @Nonnull IContextCopier loggingContext)
-            throws IOException
     {
         if (asiPcmSoundUnitSamples.length != SoundUnitDecoder.SAMPLES_PER_SOUND_UNIT)
             throw new IllegalArgumentException();
@@ -230,7 +237,6 @@ public class SoundUnitEncoder {
     @Nonnull EncodedUnit encodeSoundUnit(@Nonnull short[] asiPcmSoundUnitSamples,
                                          int iParameters,
                                          @Nonnull IContextCopier loggingContext)
-            throws IOException
     {
         if (iParameters < 0)
             throw new IllegalArgumentException();
@@ -257,7 +263,7 @@ public class SoundUnitEncoder {
         /** Encoded data goes here. */
         private final byte[] _abEncodedAdpcm = new byte[SoundUnitDecoder.SAMPLES_PER_SOUND_UNIT];
 
-        /** If at least 1 ADPCM sample had to be clamped to fit. 
+        /** If at least 1 ADPCM sample had to be clamped to fit.
          * Try to avoid this this {@link FilterRangeEncoder} if clamping occurred. */
         private boolean _blnHadToClamp = false;
 
@@ -277,7 +283,9 @@ public class SoundUnitEncoder {
         }
 
         /** Checks if this sound unit provides better encoding than the supplied
-         *  sound unit. The decider. */
+         *  sound unit.
+         * TODO: This may not be the best way to decide the winning encoded sound unit,
+         * but it should be a reasonable choice. */
         public boolean isBetterThan(@Nonnull FilterRangeEncoder other) {
             return _dblMaxDelta < other._dblMaxDelta;
         }
@@ -310,15 +318,15 @@ public class SoundUnitEncoder {
 
                 // do bit shifting via mult/div
                 int iBitsToShift = _iRange - (16-_iAdpcmBitsPerSample);
-                double dblRaned;
+                double dblRanged;
                 if (iBitsToShift < 0)
-                    dblRaned = dblFiltered / (1 << -iBitsToShift);
+                    dblRanged = dblFiltered / (1 << -iBitsToShift);
                 else if (iBitsToShift > 0)
-                    dblRaned = dblFiltered * (1 << iBitsToShift);
+                    dblRanged = dblFiltered * (1 << iBitsToShift);
                 else
-                    dblRaned = dblFiltered;
+                    dblRanged = dblFiltered;
 
-                long lngRanged = Math.round(dblRaned);
+                long lngRanged = Math.round(dblRanged);
                 // check if the rounded value will fit in the bits available
                 // if not, clamp it and flag the encoding as a failure
                 if (lngRanged < _iEncodeMin || lngRanged > _iEncodeMax) {
@@ -357,7 +365,7 @@ public class SoundUnitEncoder {
                     telemetry.adblPrev1Samples[i]        = _contextSnapshot.dblPrev1;
                     telemetry.adblPrev2Samples[i]        = _contextSnapshot.dblPrev2;
                     telemetry.adblFilteredSamples[i]     = dblFiltered;
-                    telemetry.adblRangedSamples[i]       = dblRaned;
+                    telemetry.adblRangedSamples[i]       = dblRanged;
                     telemetry.abEncodedAdpcmSamples[i]   = bEncoded;
                     telemetry.asiShortTopSamples[i]      = siAdpcmShortTopSample;
                     telemetry.adblDecodedSamples[i]      = dblDecodedPcm;
@@ -372,7 +380,7 @@ public class SoundUnitEncoder {
             return _blnHadToClamp;
         }
     }
-    
+
     // =========================================================================
     // static
 
@@ -420,7 +428,7 @@ public class SoundUnitEncoder {
          * @param iSample Sample between 0 and 28 (exclusive).
          */
         public String sample(int iSample) {
-            return String.format("Filter %d Range %d: Sample#%d %d filterd (Prev1 %f Prev2 %f) => %f ranged => %f. Encoded %d shifted => %d decoded => %f%s",
+            return String.format("Filter %d Range %d: Sample#%d %d filtered (Prev1 %f Prev2 %f) => %f ranged => %f. Encoded %d shifted => %d decoded => %f%s",
                     iFilter, iRange, iSample, asiSourcePcmSamples[iSample],
                     adblPrev1Samples[iSample], adblPrev2Samples[iSample],
                     adblFilteredSamples[iSample],

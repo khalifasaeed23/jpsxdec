@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2013-2019  Michael Sabin
+ * Copyright (C) 2013-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -46,9 +46,10 @@ import java.io.OutputStream;
 import java.util.logging.Logger;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
-import jpsxdec.cdreaders.CdFileSectorReader;
+import jpsxdec.cdreaders.CdException;
 import jpsxdec.cdreaders.CdRiffHeader;
 import jpsxdec.cdreaders.CdSector;
+import jpsxdec.cdreaders.ICdSectorReader;
 import jpsxdec.i18n.I;
 import jpsxdec.i18n.ILocalizedMessage;
 import jpsxdec.util.ArgParser;
@@ -56,7 +57,11 @@ import jpsxdec.util.IO;
 import jpsxdec.util.Misc;
 
 
-/** Command to copy sectors out of a disc image. */
+/** Command to copy sectors out of a disc image.
+ * <pre>
+ * -copysect {@code <start sector>}-{@code <end sector>}
+ * </pre>
+ */
 class Command_CopySect extends Command {
 
     private static final Logger LOG = Logger.getLogger(Command_CopySect.class.getName());
@@ -67,6 +72,7 @@ class Command_CopySect extends Command {
     @Nonnull
     private int[] _aiStartEndSectors;
 
+    @Override
     protected @CheckForNull ILocalizedMessage validate(@Nonnull String s) {
         _aiStartEndSectors = parseNumberRange(s);
         if (_aiStartEndSectors == null) {
@@ -76,8 +82,9 @@ class Command_CopySect extends Command {
         }
     }
 
+    @Override
     public void execute(@Nonnull ArgParser ap) throws CommandLineException {
-        CdFileSectorReader cdReader = getCdReader();
+        ICdSectorReader cdReader = getCdReader();
         String sOutputFile = String.format("%s%d-%d.dat",
                 Misc.removeExt(cdReader.getSourceFile().getName()),
                 _aiStartEndSectors[0], _aiStartEndSectors[1]);
@@ -90,7 +97,7 @@ class Command_CopySect extends Command {
         } catch (FileNotFoundException ex) {
             throw new CommandLineException(I.IO_OPENING_FILE_NOT_FOUND_NAME(sOutputFile), ex);
         }
-        
+
         OutputStream os = null;
         try {
             os = new BufferedOutputStream(fos);
@@ -98,7 +105,7 @@ class Command_CopySect extends Command {
             boolean blnAddCdxaHeader;
             if (iRawSectorSize == CdSector.SECTOR_SIZE_2048_ISO) {
                 blnAddCdxaHeader = false;
-            } else { 
+            } else {
                 if (!ap.hasRemaining()) {
                     blnAddCdxaHeader = true;
                 } else {
@@ -115,7 +122,7 @@ class Command_CopySect extends Command {
                 CdSector sector = cdReader.getSector(i);
                 os.write(sector.getRawSectorDataCopy());
             }
-        } catch (CdFileSectorReader.CdReadException ex) {
+        } catch (CdException.Read ex) {
             throw new CommandLineException(I.IO_READING_FROM_FILE_ERROR_NAME(
                                            ex.getFile().toString()), ex);
         } catch (IOException ex) {

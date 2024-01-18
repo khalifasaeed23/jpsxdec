@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2016-2019  Michael Sabin
+ * Copyright (C) 2016-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -48,10 +48,10 @@ import jpsxdec.i18n.exception.LocalizedDeserializationFail;
 import jpsxdec.indexing.DiscIndex;
 import jpsxdec.indexing.DiscIndexer;
 import jpsxdec.modules.SectorClaimSystem;
-import jpsxdec.modules.SectorClaimToUnidentifiedSector;
+import jpsxdec.modules.UnidentifiedSectorStreamListener;
 
 
-public class DiscIndexerSpu extends DiscIndexer implements SectorClaimToUnidentifiedSector.Listener {
+public class DiscIndexerSpu extends DiscIndexer implements UnidentifiedSectorStreamListener.Listener {
 
     public static final boolean ENABLE_SPU_SUPPORT = false;
 
@@ -61,7 +61,7 @@ public class DiscIndexerSpu extends DiscIndexer implements SectorClaimToUnidenti
     private static final int MIN_SOUND_UNIT_COUNT = 16;
 
     @Override
-    public @CheckForNull DiscItemSpu deserializeLineRead(SerializedDiscItem fields) 
+    public @CheckForNull DiscItemSpu deserializeLineRead(@Nonnull SerializedDiscItem fields)
             throws LocalizedDeserializationFail
     {
         if (DiscItemSpu.TYPE_ID.equals(fields.getType()))
@@ -71,14 +71,16 @@ public class DiscIndexerSpu extends DiscIndexer implements SectorClaimToUnidenti
 
     @Override
     public void attachToSectorClaimer(@Nonnull SectorClaimSystem scs) {
-        SectorClaimToUnidentifiedSector c = scs.getClaimer(SectorClaimToUnidentifiedSector.class);
-        c.addListener(this);
+        UnidentifiedSectorStreamListener.attachToSectorClaimer(scs, this);
     }
 
     @Override
     public void listPostProcessing(@Nonnull Collection<DiscItem> allItems) {
     }
-
+    @Override
+    public boolean filterChild(DiscItem parent, DiscItem child) {
+        return false;
+    }
     @Override
     public void indexGenerated(@Nonnull DiscIndex index) {
     }
@@ -113,7 +115,7 @@ public class DiscIndexerSpu extends DiscIndexer implements SectorClaimToUnidenti
         private boolean _blnInRun = false;
         private int _iStartSector;
         private int _iStartOffset;
-        
+
         private int _iEndSector;
         private int _iEndOffset;
         private int _iSoundUnitCount;
@@ -204,6 +206,7 @@ public class DiscIndexerSpu extends DiscIndexer implements SectorClaimToUnidenti
         }
     }
 
+    @Override
     public void feedSector(@Nonnull CdSector cdSector) {
         int iUserDataSize = cdSector.getCdUserDataSize();
         int iSector = cdSector.getSectorIndexFromStart();
@@ -232,6 +235,7 @@ public class DiscIndexerSpu extends DiscIndexer implements SectorClaimToUnidenti
         }
     }
 
+    @Override
     public void endOfUnidentified() {
         for (SpuRun run : _spuRuns) {
             run.clearRun();

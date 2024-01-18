@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -38,82 +38,37 @@
 package jpsxdec.modules.xa;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 import jpsxdec.cdreaders.CdSector;
-import jpsxdec.cdreaders.CdSectorXaSubHeader;
-import jpsxdec.i18n.exception.LoggedFailure;
 import jpsxdec.i18n.log.ILocalizedLogger;
 import jpsxdec.modules.SectorClaimSystem;
 import jpsxdec.util.IOIterator;
 
 
-public class SectorClaimToSectorXaAudio extends SectorClaimSystem.SectorClaimer {
-    public interface Listener {
-        void feedXaSector(@Nonnull CdSector cdSector,
-                          @CheckForNull SectorXaAudio xaSector,
-                          @Nonnull ILocalizedLogger log)
-                throws LoggedFailure;
-        void xaEof(int iChannel);
+public class SectorClaimToSectorXaAudio implements SectorClaimSystem.SectorClaimer {
 
-        public void endOfSectors(@Nonnull ILocalizedLogger log);
-    }
-
-    private final ArrayList<Listener> _listeners = new ArrayList<Listener>();
-
-    public SectorClaimToSectorXaAudio() {
-    }
-    public void addListener(@CheckForNull Listener listener) {
-        _listeners.add(listener);
-    }
-
+    @Override
     public void sectorRead(@Nonnull SectorClaimSystem.ClaimableSector cs,
                            @Nonnull IOIterator<SectorClaimSystem.ClaimableSector> peekIt,
                            @Nonnull ILocalizedLogger log)
-            throws IOException, SectorClaimSystem.ClaimerFailure
+            throws IOException
     {
         if (cs.isClaimed())
             return;
         CdSector cdSector = cs.getSector();
-        SectorXaAudio xaSect = null;
 
-        SectorXaNull nullSect = new SectorXaNull(cdSector);
-        if (nullSect.getProbability() > 0) {
-            cs.claim(nullSect);
+        SectorXaEmpty emptySect = new SectorXaEmpty(cdSector);
+        if (emptySect.getProbability() > 0) {
+            cs.claim(emptySect);
         } else {
             SectorXaAudio possibleXa = new SectorXaAudio(cdSector);
             if (possibleXa.getProbability() > 0) {
-                xaSect = possibleXa;
                 cs.claim(possibleXa);
-            }
-        }
-
-        if (sectorIsInRange(cs.getSector().getSectorIndexFromStart())) {
-            for (Listener listener : _listeners) {
-                try {
-                    listener.feedXaSector(cdSector, xaSect, log);
-                } catch (LoggedFailure ex) {
-                    throw new SectorClaimSystem.ClaimerFailure(ex);
-                }
-            }
-
-            CdSectorXaSubHeader sh = cdSector.getSubHeader();
-            if (sh != null && sh.getSubMode().getEofMarker() &&
-                sh.getChannel() <= SectorXaAudio.MAX_VALID_CHANNEL)
-            {
-                // if the sector's EOF bit was set, this stream is closed
-                // this is important for many games
-                for (Listener listener : _listeners) {
-                    listener.xaEof(sh.getChannel());
-                }
             }
         }
     }
 
+    @Override
     public void endOfSectors(@Nonnull ILocalizedLogger log) {
-        for (Listener listener : _listeners) {
-            listener.endOfSectors(log);
-        }
     }
 }

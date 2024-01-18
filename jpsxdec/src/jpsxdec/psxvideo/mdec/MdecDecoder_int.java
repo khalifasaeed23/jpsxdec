@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -48,6 +48,8 @@ import jpsxdec.psxvideo.mdec.idct.IDCT_int;
  * examination, you can't really tell. It's also significantly faster. */
 public class MdecDecoder_int extends MdecDecoder {
 
+    public static boolean LOG_CORRUPTION_STACK_TRACE = true;
+
     private final IDCT_int _idct;
 
     private final int[] _aiCrBuffer;
@@ -60,12 +62,13 @@ public class MdecDecoder_int extends MdecDecoder {
     public MdecDecoder_int(@Nonnull IDCT_int idct, int iWidth, int iHeight) {
         super(iWidth, iHeight);
         _idct = idct;
-        
+
         _aiCrBuffer = new int[CW*CH];
         _aiCbBuffer = new int[_aiCrBuffer.length];
         _aiLumaBuffer = new int[W*H];
     }
 
+    @Override
     public void decode(@Nonnull MdecInputStream sourceMdecInStream)
             throws MdecException.EndOfStream, MdecException.ReadCorruption
     {
@@ -121,10 +124,11 @@ public class MdecDecoder_int extends MdecDecoder {
                             iRevZigZagMatrixPos = MdecInputStream.REVERSE_ZIG_ZAG_LOOKUP_LIST[iCurrentBlockVectorPosition];
                         } catch (ArrayIndexOutOfBoundsException ex) {
                             MdecContext.MacroBlockPixel macBlkXY = context.getMacroBlockPixel();
-                            throw new MdecException.ReadCorruption(MdecException.RLC_OOB_IN_BLOCK_NAME(
-                                           iCurrentBlockVectorPosition,
-                                           context.getTotalMacroBlocksRead(), macBlkXY.x, macBlkXY.y, context.getCurrentBlock().ordinal(), context.getCurrentBlock().name()),
-                                           ex);
+                            String sMsg = MdecException.RLC_OOB_IN_BLOCK_NAME(
+                                    iCurrentBlockVectorPosition, context.getTotalMacroBlocksRead(),
+                                    macBlkXY.x, macBlkXY.y,
+                                    context.getCurrentBlock().ordinal(), context.getCurrentBlock().name());
+                            throw new MdecException.ReadCorruption(sMsg, LOG_CORRUPTION_STACK_TRACE ? ex : null);
                         }
 
                         if (_code.getBottom10Bits() != 0) {
@@ -155,7 +159,7 @@ public class MdecDecoder_int extends MdecDecoder {
                 }
             }
         } finally {
-            // in case an exception occured
+            // in case an exception occurred
             // fill in any remaining data with zeros
             // pickup where decoding left off
             while (context.getTotalMacroBlocksRead() < _iTotalMacBlocks) {
@@ -222,6 +226,7 @@ public class MdecDecoder_int extends MdecDecoder {
 
     }
 
+    @Override
     public void readDecodedRgb(int iDestWidth, int iDestHeight, @Nonnull int[] aiDest,
                                int iOutStart, int iOutStride)
     {
@@ -229,7 +234,7 @@ public class MdecDecoder_int extends MdecDecoder {
         final RGB rgb1 = new RGB(), rgb2 = new RGB(), rgb3 = new RGB(), rgb4 = new RGB();
 
         final int W_x2 = W*2, iOutStride_x2 = iOutStride*2;
-        
+
         final int iDestWidthSub1 = iDestWidth - 1;
         final int iDestHeightSub1 = iDestHeight - 1;
 

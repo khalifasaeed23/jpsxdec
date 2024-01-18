@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -39,7 +39,8 @@ package jpsxdec.discitems;
 
 import java.io.File;
 import java.io.RandomAccessFile;
-import jpsxdec.cdreaders.CdFileSectorReader;
+import jpsxdec.cdreaders.CdOpener;
+import jpsxdec.cdreaders.ICdSectorReader;
 import jpsxdec.i18n.FeedbackStream;
 import jpsxdec.i18n.ILocalizedMessage;
 import jpsxdec.i18n.UnlocalizedMessage;
@@ -70,7 +71,7 @@ public class DiscItemTest {
 
 
     private static class DI extends DiscItem {
-        public DI(CdFileSectorReader cd, int iStartSector, int iEndSector) {
+        public DI(ICdSectorReader cd, int iStartSector, int iEndSector) {
             super(cd, iStartSector, iEndSector);
         }
         public String getSerializationTypeId() { return "Test"; }
@@ -93,7 +94,7 @@ public class DiscItemTest {
     private static class SBG extends DiscItemSaverBuilderGui {
         public boolean useSaverBuilder(DiscItemSaverBuilder saverBuilder) { return false; }
     }
-    
+
     @Rule
     public TemporaryFolder _folder = new TemporaryFolder();
 
@@ -105,14 +106,14 @@ public class DiscItemTest {
         raf.writeByte(0);
         raf.close();
 
-        CdFileSectorReader cd = new CdFileSectorReader(cdFile, 2048);
+        ICdSectorReader cd = CdOpener.openWithSectorSize(cdFile, 2048);
 
         DI d1 = new DI(cd, 10, 20);
-        
+
         DI d2 = new DI(cd, 0, 5);
         assertEquals(0, d1.getOverlap(d2));
         assertEquals(0, d2.getOverlap(d1));
-        
+
         DI d3 = new DI(cd, 5, 10);
         assertEquals(1, d1.getOverlap(d3));
         assertEquals(1, d3.getOverlap(d1));

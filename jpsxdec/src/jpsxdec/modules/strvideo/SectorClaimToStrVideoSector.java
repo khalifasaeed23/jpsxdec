@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -38,9 +38,7 @@
 package jpsxdec.modules.strvideo;
 
 import java.io.IOException;
-import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
-import jpsxdec.i18n.exception.LoggedFailure;
 import jpsxdec.i18n.log.ILocalizedLogger;
 import jpsxdec.modules.SectorClaimSystem;
 import jpsxdec.modules.video.sectorbased.ISelfDemuxingVideoSector;
@@ -48,57 +46,21 @@ import jpsxdec.modules.video.sectorbased.VideoSectorIdentifier;
 import jpsxdec.util.IOIterator;
 
 /** Identifies video sectors from sectors. */
-public class SectorClaimToStrVideoSector extends SectorClaimSystem.SectorClaimer {
+public class SectorClaimToStrVideoSector implements SectorClaimSystem.SectorClaimer {
 
-    public interface Listener {
-        void feedSector(@Nonnull ISelfDemuxingVideoSector vidSector,
-                        @Nonnull ILocalizedLogger log)
-                throws LoggedFailure;
-        void endOfSectors(@Nonnull ILocalizedLogger log)
-                throws LoggedFailure;
-    }
-
-    @CheckForNull
-    private Listener _listener;
-
-    public SectorClaimToStrVideoSector() {
-    }
-    public SectorClaimToStrVideoSector(@Nonnull Listener listener) {
-        _listener = listener;
-    }
-    public void setListener(@CheckForNull Listener listener) {
-        _listener = listener;
-    }
-
+    @Override
     public void sectorRead(@Nonnull SectorClaimSystem.ClaimableSector cs,
                            @Nonnull IOIterator<SectorClaimSystem.ClaimableSector> peekIt,
                            @Nonnull ILocalizedLogger log)
-            throws IOException, SectorClaimSystem.ClaimerFailure
+            throws IOException
     {
         if (cs.isClaimed())
             return;
         ISelfDemuxingVideoSector vidSector = VideoSectorIdentifier.idAndClaim(cs);
-
-        if (vidSector != null && _listener != null && 
-            sectorIsInRange(cs.getSector().getSectorIndexFromStart()))
-        {
-            try {
-                _listener.feedSector(vidSector, log);
-            } catch (LoggedFailure ex) {
-                throw new SectorClaimSystem.ClaimerFailure(ex);
-            }
-        }
     }
 
-    public void endOfSectors(@Nonnull ILocalizedLogger log) 
-            throws SectorClaimSystem.ClaimerFailure
-    {
-        if (_listener != null) {
-            try {
-                _listener.endOfSectors(log);
-            } catch (LoggedFailure ex) {
-                throw new SectorClaimSystem.ClaimerFailure(ex);
-            }
-        }
+    @Override
+    public void endOfSectors(@Nonnull ILocalizedLogger log) {
     }
+
 }

@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2019  Michael Sabin
+ * Copyright (C) 2019-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -37,7 +37,6 @@
 
 package jpsxdec.cmdline;
 
-import argparser.StringHolder;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.util.Arrays;
@@ -50,8 +49,11 @@ import jpsxdec.psxvideo.mdec.MdecInputStream;
 import jpsxdec.psxvideo.mdec.MdecInputStreamReader;
 import jpsxdec.util.ArgParser;
 import jpsxdec.util.IO;
-import static org.junit.Assert.*;
 import org.junit.Test;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 
 public class Command_StaticTest {
@@ -82,8 +84,11 @@ public class Command_StaticTest {
     private void testBadArgs(String... asArgs) {
         ArgParser ap = new ArgParser(asArgs);
         Command_Static testSubject = new Command_Static();
+        FeedbackStream fbs = new FeedbackStream();
+        InFileAndIndexArgs inFileIdx = new InFileAndIndexArgs(null, null, fbs);
+
         assertNull(testSubject.validate("mdec"));
-        testSubject.init(new ArgParser(new String[] {"-static"}), new StringHolder("ignored for this test"), null, new FeedbackStream());
+        testSubject.init(new ArgParser(new String[] {"-static"}), inFileIdx, fbs);
 
         try {
             testSubject.execute(ap);
@@ -98,48 +103,63 @@ public class Command_StaticTest {
 
     @Test
     public void testBs2Mdec() throws Exception {
-        ArgParser ap = new ArgParser(new String[] {"-dim", "16x16", "-fmt", "mdec"});
-        Command_Static testSubject = new Command_Static();
-        assertNull(testSubject.validate("bs"));
-
         // put an input test file in a temp directory
         File inFile = testutil.Util.resourceAsTempFile(Command_StaticTest.class, TEST_BS_FILE);
+
+        ArgParser ap = new ArgParser(new String[] {"-dim", "16x16", "-fmt", "mdec"});
+        FeedbackStream fbs = new FeedbackStream();
+        Command_Static testSubject = new Command_Static();
+        InFileAndIndexArgs inFileIdx = new InFileAndIndexArgs(inFile.getPath(), null, fbs);
+        assertNull(testSubject.validate("bs"));
+
         // run command
-        testSubject.init(new ArgParser(new String[] {"-static"}), new StringHolder(inFile.getPath()), null, new FeedbackStream());
+        testSubject.init(new ArgParser(new String[] {"-static"}), inFileIdx, fbs);
         testSubject.execute(ap);
         // I guess check the output file
-        assertTrue(new File(Command_StaticTest.class.getSimpleName()+"_16x16.mdec").exists());
+        File expectedFile = new File(Command_StaticTest.class.getSimpleName()+"_16x16.mdec");
+        assertTrue(expectedFile.exists());
+        expectedFile.delete();
     }
 
     @Test
     public void testBs2Png() throws Exception {
-        ArgParser ap = new ArgParser(new String[] {"-dim", "16x16", "-fmt", "png", "-up", "nearestneighbor"});
-        Command_Static testSubject = new Command_Static();
-        assertNull(testSubject.validate("bs"));
-
         // put an input test file in a temp directory
         File inFile = testutil.Util.resourceAsTempFile(Command_StaticTest.class, TEST_BS_FILE);
+
+        ArgParser ap = new ArgParser(new String[] {"-dim", "16x16", "-fmt", "png", "-up", "nearestneighbor"});
+        FeedbackStream fbs = new FeedbackStream();
+        Command_Static testSubject = new Command_Static();
+        InFileAndIndexArgs inFileIdx = new InFileAndIndexArgs(inFile.getPath(), null, fbs);
+        assertNull(testSubject.validate("bs"));
+
         // run command
-        testSubject.init(new ArgParser(new String[] {"-static"}), new StringHolder(inFile.getPath()), null, new FeedbackStream());
+        testSubject.init(new ArgParser(new String[] {"-static"}), inFileIdx, fbs);
         testSubject.execute(ap);
         // I guess check the output file
-        assertTrue(new File(Command_StaticTest.class.getSimpleName()+".png").exists());
+        File expectedFile = new File(Command_StaticTest.class.getSimpleName()+".png");
+        assertTrue(expectedFile.exists());
+        expectedFile.delete();
     }
 
 
     @Test
     public void testMdec2Jpg() throws Exception {
-        ArgParser ap = new ArgParser(new String[] {"-dim", "16x16", "-fmt", "jpg", "-up", "nearestneighbor"});
-        Command_Static testSubject = new Command_Static();
-        assertNull(testSubject.validate("mdec"));
-
         // put an input test file in a temp directory
         File inFile = testutil.Util.resourceAsTempFile(Command_StaticTest.class, TEST_MDEC_FILE);
+
+        ArgParser ap = new ArgParser(new String[] {"-dim", "16x16", "-fmt", "jpg", "-up", "nearestneighbor"});
+        FeedbackStream fbs = new FeedbackStream();
+        Command_Static testSubject = new Command_Static();
+        InFileAndIndexArgs inFileIdx = new InFileAndIndexArgs(inFile.getPath(), null, fbs);
+        assertNull(testSubject.validate("mdec"));
+
         // run command
-        testSubject.init(new ArgParser(new String[] {"-static"}), new StringHolder(inFile.getPath()), null, new FeedbackStream());
+        testSubject.init(new ArgParser(new String[] {"-static"}), inFileIdx, fbs);
         testSubject.execute(ap);
         // I guess check the output file
-        assertTrue(new File(Command_StaticTest.class.getSimpleName()+".jpg").exists());
+        File expectedFile = new File(Command_StaticTest.class.getSimpleName()+".jpg");
+        assertTrue(expectedFile.exists());
+        expectedFile.delete();
     }
 
     public static void main(String[] args) throws Exception {
@@ -161,7 +181,8 @@ public class Command_StaticTest {
         fos.close();
 
         mis = new ArrayListMdecInputStream(codes);
-        BitStreamUncompressor_STRv2.BitStreamCompressor_STRv2 x = new BitStreamUncompressor_STRv2.BitStreamCompressor_STRv2(1);
+        BitStreamUncompressor_STRv2.BitStreamCompressor_STRv2 x =
+                new BitStreamUncompressor_STRv2.BitStreamCompressor_STRv2(1, -1);
         byte[] abData = x.compress(mis);
         IO.writeFile(TEST_BS_FILE, abData);
     }

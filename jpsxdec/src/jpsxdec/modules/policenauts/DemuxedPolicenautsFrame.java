@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2019  Michael Sabin
+ * Copyright (C) 2019-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -37,19 +37,15 @@
 
 package jpsxdec.modules.policenauts;
 
-import java.io.PrintStream;
 import java.util.Arrays;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
-import jpsxdec.cdreaders.CdFileSectorReader;
-import jpsxdec.i18n.exception.LoggedFailure;
-import jpsxdec.i18n.log.ILocalizedLogger;
 import jpsxdec.modules.video.IDemuxedFrame;
 import jpsxdec.modules.video.framenumber.FrameNumber;
-import jpsxdec.psxvideo.mdec.MdecInputStream;
+import jpsxdec.psxvideo.bitstreams.IBitStreamUncompressor;
 import jpsxdec.util.Fraction;
 
-
+/** @see SPacket */
 public class DemuxedPolicenautsFrame implements IDemuxedFrame {
     private final int _iWidth, _iHeight;
     private final SPacketData _data;
@@ -70,47 +66,48 @@ public class DemuxedPolicenautsFrame implements IDemuxedFrame {
         _presentationSector = presentationSector;
     }
 
+    @Override
     public int getWidth() {
         return _iWidth;
     }
 
+    @Override
     public int getHeight() {
         return _iHeight;
     }
 
+    @Override
     public @Nonnull FrameNumber getFrame() {
         return _frameNumber;
     }
 
+    @Override
     public int getStartSector() {
         return _data.getStartSector();
     }
 
+    @Override
     public int getEndSector() {
         return _data.getEndSectorInclusive();
     }
 
+    @Override
     public @Nonnull Fraction getPresentationSector() {
         return _presentationSector;
     }
 
-    public @CheckForNull MdecInputStream getCustomFrameMdecStream() {
+    @Override
+    public @CheckForNull IBitStreamUncompressor getCustomFrameMdecStream() {
         return null;
     }
 
+    @Override
     public int getDemuxSize() {
         return _data.getData().length;
     }
 
+    @Override
     public @Nonnull byte[] copyDemuxData() {
-        return Arrays.copyOfRange(_data.getData(), 0, getDemuxSize());
-    }
-
-    public void printSectors(PrintStream ps) {
-        // TODO?
-    }
-
-    public void writeToSectors(byte[] abNewDemux, int iNewUsedSize, int iNewMdecCodeCount, CdFileSectorReader cd, ILocalizedLogger log) throws LoggedFailure {
-        throw new UnsupportedOperationException("Replacing Policenauts frames is not supported");
+        return Arrays.copyOf(_data.getData(), getDemuxSize());
     }
 }

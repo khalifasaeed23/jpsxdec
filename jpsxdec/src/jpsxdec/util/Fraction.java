@@ -1,5 +1,8 @@
 package jpsxdec.util;
 
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+import java.util.Locale;
 import javax.annotation.Nonnull;
 
 /*
@@ -21,7 +24,7 @@ import javax.annotation.Nonnull;
  * An immutable class representing fractions as pairs of longs.
  * Fractions are always maintained in reduced form.
  **/
-public class Fraction implements Cloneable, Comparable, java.io.Serializable {
+public class Fraction implements Cloneable, Comparable<Fraction> {
   public static final Fraction ZERO = new Fraction(0, 1);
 
   protected final long numerator_;
@@ -33,7 +36,7 @@ public class Fraction implements Cloneable, Comparable, java.io.Serializable {
   /** Return the getDenominator **/
   public final long getDenominator() { return denominator_; }
 
-  public Fraction(int i) {
+  public Fraction(long i) {
     this(i, 1);
   }
 
@@ -58,15 +61,17 @@ public class Fraction implements Cloneable, Comparable, java.io.Serializable {
   @Override
   public String toString() {
     if (getDenominator() == 1)
-      return String.format("%d", getNumerator());
-    else
-      return String.format("%d/%d (%3f)", getNumerator(), getDenominator(), asDouble());
+      return String.valueOf(getNumerator());
+
+    DecimalFormat df = new DecimalFormat("0", DecimalFormatSymbols.getInstance(Locale.ENGLISH));
+    df.setMaximumFractionDigits(4);
+    return getNumerator() + "/" + getDenominator() + " (" + df.format(asDouble()) + ")";
   }
 
   public @Nonnull Fraction clone() { return new Fraction(this); }
 
   /** Return the value of the Fraction as a double **/
-  public double asDouble() { 
+  public double asDouble() {
     return ((double)(getNumerator())) / ((double)(getDenominator()));
   }
 
@@ -76,15 +81,19 @@ public class Fraction implements Cloneable, Comparable, java.io.Serializable {
   }
 
     public int asInt() {
-        return (int) (getNumerator() / getDenominator());
+        return (int)asLong();
     }
 
-  /** 
+    public long asLong() {
+        return getNumerator() / getDenominator();
+    }
+
+  /**
    * Compute the nonnegative greatest common divisor of a and b.
    * (This is needed for normalizing Fractions, but can be
    * useful on its own.)
    **/
-  public static long gcd(long a, long b) { 
+  public static long gcd(long a, long b) {
     long x;
     long y;
 
@@ -207,15 +216,15 @@ public class Fraction implements Cloneable, Comparable, java.io.Serializable {
   }
 
   /** return a number less, equal, or greater than zero
-   * reflecting whether this Fraction is less, equal or greater than 
+   * reflecting whether this Fraction is less, equal or greater than
    * the value of Fraction other.
    **/
-  public int compareTo(Object other) {
-    Fraction b = (Fraction)(other);
+  @Override
+  public int compareTo(Fraction other) {
     long an = getNumerator();
     long ad = getDenominator();
-    long bn = b.getNumerator();
-    long bd = b.getDenominator();
+    long bn = other.getNumerator();
+    long bd = other.getDenominator();
     long l = an*bd;
     long r = bn*ad;
     return (l < r)? -1 : ((l == r)? 0: 1);
@@ -237,6 +246,8 @@ public class Fraction implements Cloneable, Comparable, java.io.Serializable {
 
   @Override
   public boolean equals(Object other) {
+    if (!(other instanceof Fraction))
+        return false;
     return compareTo((Fraction)other) == 0;
   }
 

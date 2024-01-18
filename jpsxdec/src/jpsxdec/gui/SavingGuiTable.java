@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -80,10 +80,10 @@ public class SavingGuiTable extends AbstractTableModel {
         };
 
         @Nonnull
-        private final Class _type;
+        private final Class<?> _type;
         @Nonnull
         private final ILocalizedMessage _name;
-        COLUMNS(@Nonnull Class type, @Nonnull ILocalizedMessage name) {
+        COLUMNS(@Nonnull Class<?> type, @Nonnull ILocalizedMessage name) {
             _type = type;
             _name = name;
         }
@@ -116,7 +116,7 @@ public class SavingGuiTable extends AbstractTableModel {
     public final static int PROGRESS_FAILED = -3;
     public final static int PROGRESS_CANCELED = -2;
     public final static int PROGRESS_WAITING = -1;
-    public final static int PROGRESS_DONE = 100;
+    public final static int PROGRESS_DONE = 101; // work can still be happening at 100%, use 101 to really mean done
     public final static int PROGRESS_STARTED = 0;
 
     private static class ProgressRenderer extends DefaultTableCellRenderer {
@@ -214,22 +214,27 @@ public class SavingGuiTable extends AbstractTableModel {
         fireTableCellUpdated(_rows.indexOf(row), col.ordinal());
     }
 
+    @Override
     public int getRowCount() {
         return _rows.size();
     }
 
+    @Override
     public int getColumnCount() {
         return COLUMNS.values().length;
     }
 
+    @Override
     public @CheckForNull Object getValueAt(int rowIndex, int columnIndex) {
         return COLUMNS.values()[columnIndex].val(_rows.get(rowIndex));
     }
 
+    @Override
     public @Nonnull Class<?> getColumnClass(int columnIndex) {
         return COLUMNS.values()[columnIndex]._type;
     }
 
+    @Override
     public @Nonnull String getColumnName(int column) {
         return COLUMNS.values()[column]._name.getLocalizedMessage();
     }

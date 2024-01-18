@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2019  Michael Sabin
+ * Copyright (C) 2019-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -44,23 +44,25 @@ import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 import javax.sound.sampled.AudioFormat;
 import jpsxdec.adpcm.SpuAdpcmDecoder;
-import jpsxdec.cdreaders.CdFileSectorReader;
+import jpsxdec.cdreaders.ICdSectorReader;
+import jpsxdec.discitems.Dimensions;
 import jpsxdec.discitems.SerializedDiscItem;
 import jpsxdec.i18n.exception.LocalizedDeserializationFail;
 import jpsxdec.i18n.exception.LoggedFailure;
 import jpsxdec.i18n.log.ILocalizedLogger;
 import jpsxdec.modules.SectorClaimSystem;
-import jpsxdec.modules.sharedaudio.DecodedAudioPacket;
-import jpsxdec.modules.video.Dimensions;
+import jpsxdec.modules.SectorRange;
+import jpsxdec.modules.audio.DecodedAudioPacket;
 import jpsxdec.modules.video.IDemuxedFrame;
+import jpsxdec.modules.video.ISectorClaimToFrameAndAudio;
 import jpsxdec.modules.video.framenumber.FrameNumber;
 import jpsxdec.modules.video.framenumber.HeaderFrameNumber;
 import jpsxdec.modules.video.framenumber.IFrameNumberFormatterWithHeader;
 import jpsxdec.modules.video.framenumber.IndexSectorFrameNumber;
 import jpsxdec.modules.video.packetbased.DiscItemPacketBasedVideoStream;
-import jpsxdec.modules.video.packetbased.SectorClaimToAudioAndFrame;
 import jpsxdec.util.Fraction;
 
+/** @see SPacket */
 public class DiscItemPolicenauts extends DiscItemPacketBasedVideoStream {
 
     public static final String TYPE_ID = "Policenauts";
@@ -68,7 +70,7 @@ public class DiscItemPolicenauts extends DiscItemPacketBasedVideoStream {
     @Nonnull
     private final HeaderFrameNumber.Format _timestampFrameNumberFormat;
 
-    public DiscItemPolicenauts(@Nonnull CdFileSectorReader cd,
+    public DiscItemPolicenauts(@Nonnull ICdSectorReader cd,
                                int iStartSector, int iEndSector,
                                @Nonnull Dimensions dim,
                                @Nonnull IndexSectorFrameNumber.Format sectorIndexFrameNumberFormat,
@@ -79,7 +81,7 @@ public class DiscItemPolicenauts extends DiscItemPacketBasedVideoStream {
         _timestampFrameNumberFormat = timestampFrameNumberFormat;
     }
 
-    public DiscItemPolicenauts(@Nonnull CdFileSectorReader cd, @Nonnull SerializedDiscItem fields)
+    public DiscItemPolicenauts(@Nonnull ICdSectorReader cd, @Nonnull SerializedDiscItem fields)
             throws LocalizedDeserializationFail
     {
         super(cd, fields);
@@ -109,7 +111,7 @@ public class DiscItemPolicenauts extends DiscItemPacketBasedVideoStream {
     }
 
     @Override
-    public FrameNumber getEndFrame() {
+    public @Nonnull FrameNumber getEndFrame() {
         return _timestampFrameNumberFormat.getEndFrame(_indexSectorFrameNumberFormat);
     }
 
@@ -119,18 +121,8 @@ public class DiscItemPolicenauts extends DiscItemPacketBasedVideoStream {
     }
 
     @Override
-    protected double getPacketBasedFpsInterestingDescription() {
-        return SPacket.FRAMES_PER_SECOND.asDouble();
-    }
-
-    @Override
-    public @Nonnull Fraction getSectorsPerFrame() {
-        return SPacket.SECTORS150_PER_FRAME;
-    }
-
-    @Override
-    public double getApproxDuration() {
-        return getFrameCount() / SPacket.FRAMES_PER_SECOND.asDouble();
+    public @Nonnull Fraction getFramesPerSecond() {
+        return SPacket.FRAMES_PER_SECOND;
     }
 
     @Override
@@ -139,18 +131,14 @@ public class DiscItemPolicenauts extends DiscItemPacketBasedVideoStream {
     }
 
     @Override
-    public @Nonnull SectorClaimToAudioAndFrame makeAudioVideoDemuxer(double dblVolume) {
-        return new Demuxer(getWidth(), getHeight(), getStartSector(), dblVolume,
-                _timestampFrameNumberFormat.makeFormatter(_indexSectorFrameNumberFormat));
+    public @Nonnull ISectorClaimToFrameAndAudio makeVideoAudioStream(double dblVolume) {
+        return new Stream(dblVolume,
+                          _timestampFrameNumberFormat.makeFormatter(_indexSectorFrameNumberFormat));
     }
 
-    public class Demuxer extends SectorClaimToAudioAndFrame
-                         implements SectorClaimToPolicenauts.Listener
-    {
-        private final int _iWidth, _iHeight;
+    public class Stream implements ISectorClaimToFrameAndAudio, PolicenautsSectorToPacket.Listener {
         @Nonnull
         private final IFrameNumberFormatterWithHeader _fnf;
-        private final int _iStartSector;
 
         @CheckForNull
         private IDemuxedFrame.Listener _frameListener;
@@ -163,30 +151,37 @@ public class DiscItemPolicenauts extends DiscItemPacketBasedVideoStream {
         private boolean _blnPrevTimestampWas0 = false;
         private int _iPrevDuration = 0;
 
+        private final SectorRange _sectorRange = makeSectorRange();
+
         private final ByteArrayOutputStream _pcmOut = new ByteArrayOutputStream();
 
-        public Demuxer(int iWidth, int iHeight, int iStartSector, double dblVolume,
-                       @Nonnull IFrameNumberFormatterWithHeader fnf)
+        public Stream(double dblVolume,
+                      @Nonnull IFrameNumberFormatterWithHeader fnf)
         {
-            _iWidth = iWidth;
-            _iHeight = iHeight;
-            _iStartSector = iStartSector;
             _audioDecoder = new SpuAdpcmDecoder.Mono(dblVolume);
             _fnf = fnf;
         }
 
+        @Override
         public void attachToSectorClaimer(@Nonnull SectorClaimSystem scs) {
-            SectorClaimToPolicenauts s2cs = scs.getClaimer(SectorClaimToPolicenauts.class);
-            s2cs.setListener(this);
-            s2cs.setRangeLimit(getStartSector(), getEndSector());
+            PolicenautsSectorToPacket.attachToSectorClaimer(scs, this);
         }
 
-        public void videoStart(int iWidth, int iHeight, ILocalizedLogger log) {
-            // not important here
+        @Override
+        public void videoStart(int iWidth, int iHeight, @Nonnull ILocalizedLogger log) {
+            if (iWidth != getWidth() || iHeight != getHeight())
+                throw new RuntimeException("Somehow the dimensions do not match. Maybe the index was edited?");
         }
 
         @Override
         public void feedPacket(@Nonnull SPacketData packet, @Nonnull ILocalizedLogger log) throws LoggedFailure {
+            // Only process packets that are fully in the active sector range
+            // (in practice there should never be a packet crossing the border)
+            if (!_sectorRange.sectorIsInRange(packet.getStartSector()) ||
+                !_sectorRange.sectorIsInRange(packet.getEndSectorInclusive()))
+            {
+                return;
+            }
 
             if (packet.isAudio()) {
                 if (_audioListener != null) {
@@ -198,60 +193,70 @@ public class DiscItemPolicenauts extends DiscItemPacketBasedVideoStream {
                         _zeroTimestampOffset = _zeroTimestampOffset.add(SPacket.SECTORS150_PER_TIMESTAMP.multiply(_iPrevDuration));
                     }
                     //System.out.println(_zeroTimestampOffset + " -------- " + packet);
-                    Fraction close = SPacket.SECTORS150_PER_TIMESTAMP.multiply(packet.getTimestamp()).add(_iStartSector).add(_zeroTimestampOffset);
+                    Fraction close = SPacket.SECTORS150_PER_TIMESTAMP.multiply(packet.getTimestamp()).add(getStartSector()).add(_zeroTimestampOffset);
                     _blnPrevTimestampWas0 = packet.getTimestamp() == 0;
                     _iPrevDuration = packet.getDuration();
                     packet.decodeAudio(_audioDecoder, _pcmOut);
-                    DecodedAudioPacket aup = new DecodedAudioPacket(0, SPacket.AUDIO_FORMAT, close, _pcmOut.toByteArray());
+                    DecodedAudioPacket aup = new DecodedAudioPacket(0, SPacket.AUDIO_FORMAT, _pcmOut.toByteArray(), close);
                     _audioListener.audioPacketComplete(aup, log);
                 }
             } else if (packet.isVideo()) {
                 FrameNumber fn = _fnf.next(packet.getStartSector(), packet.getTimestamp(), log);
                 if (_frameListener != null) {
-                    _frameListener.frameComplete(new DemuxedPolicenautsFrame(_iWidth, _iHeight, packet, fn,
-                            SPacket.SECTORS150_PER_TIMESTAMP.multiply(packet.getTimestamp()).add(_iStartSector)));
+                    _frameListener.frameComplete(new DemuxedPolicenautsFrame(getWidth(), getHeight(), packet, fn,
+                            SPacket.SECTORS150_PER_TIMESTAMP.multiply(packet.getTimestamp()).add(getStartSector())));
                 }
             }
         }
 
+        @Override
         public void endOfSectors(ILocalizedLogger log) {
             // not important here
         }
 
+        @Override
         public void setFrameListener(@CheckForNull IDemuxedFrame.Listener listener) {
             _frameListener = listener;
         }
 
+        @Override
         public void setAudioListener(@Nonnull DecodedAudioPacket.Listener listener) {
             _audioListener = listener;
         }
 
+        @Override
+        public boolean hasAudio() {
+            return true;
+        }
+
+        @Override
         public @Nonnull AudioFormat getOutputFormat() {
             return SPacket.AUDIO_FORMAT;
         }
 
+        @Override
         public double getVolume() {
             return _audioDecoder.getVolume();
         }
 
+        @Override
         public int getAbsolutePresentationStartSector() {
             return DiscItemPolicenauts.this.getStartSector();
         }
 
+        @Override
         public int getStartSector() {
             return DiscItemPolicenauts.this.getStartSector();
         }
 
+        @Override
         public int getEndSector() {
             return DiscItemPolicenauts.this.getEndSector();
         }
 
+        @Override
         public int getSampleFramesPerSecond() {
             return SPacket.AUDIO_SAMPLE_FRAMES_PER_SECOND;
-        }
-
-        public int getDiscSpeed() {
-            return 2;
         }
 
     }

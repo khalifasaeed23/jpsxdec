@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -44,55 +44,59 @@ import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 import javax.sound.sampled.AudioFormat;
 import jpsxdec.adpcm.XaAdpcmDecoder;
-import jpsxdec.cdreaders.CdSector;
 import jpsxdec.i18n.I;
 import jpsxdec.i18n.exception.LoggedFailure;
 import jpsxdec.i18n.log.ILocalizedLogger;
-import jpsxdec.modules.sharedaudio.DecodedAudioPacket;
+import jpsxdec.modules.IdentifiedSectorListener;
+import jpsxdec.modules.audio.sectorbased.SectorBasedDecodedAudioPacket;
 import jpsxdec.util.ByteArrayFPIS;
-import jpsxdec.util.Fraction;
 
 /** Converts a XA audio sector to a single decoded audio packet.
  * Maintains the decoding context. */
-public class SectorXaAudioToAudioPacket implements SectorClaimToSectorXaAudio.Listener {
+public class SectorXaAudioToAudioPacket implements IdentifiedSectorListener<SectorXaAudio> {
 
     @Nonnull
     private final XaAdpcmDecoder _decoder;
     private final ByteArrayOutputStream _tempBuffer = new ByteArrayOutputStream();
+    private final int _iFileNumber;
     private final int _iChannel;
     private final int _iSampleFramesPerSecond;
     @Nonnull
     private final AudioFormat _audioFormat;
     @CheckForNull
-    private DecodedAudioPacket.Listener _listener;
+    private SectorBasedDecodedAudioPacket.Listener _listener;
     private final int _iStartSector;
     private final int _iEndSectorInclusive;
 
-    public SectorXaAudioToAudioPacket(@Nonnull XaAdpcmDecoder decoder, int iSampleFramesPerSecond, int iChannel,
-                                      int iStartSector, int iEndSectorInclusive) {
+    public SectorXaAudioToAudioPacket(@Nonnull XaAdpcmDecoder decoder, int iSampleFramesPerSecond,
+                                      int iFileNumber, int iChannel,
+                                      int iStartSector, int iEndSectorInclusive)
+    {
         _decoder = decoder;
         _audioFormat = decoder.getOutputFormat(iSampleFramesPerSecond);
         _iSampleFramesPerSecond = iSampleFramesPerSecond;
+        _iFileNumber = iFileNumber;
         _iChannel = iChannel;
         _iStartSector = iStartSector;
         _iEndSectorInclusive = iEndSectorInclusive;
     }
-    public void setListener(@CheckForNull DecodedAudioPacket.Listener listener) {
+    public void setListener(@CheckForNull SectorBasedDecodedAudioPacket.Listener listener) {
         _listener = listener;
     }
 
-    public void feedXaSector(@Nonnull CdSector cdSector,
-                             @CheckForNull SectorXaAudio xaSector,
-                             @Nonnull ILocalizedLogger log)
-            throws LoggedFailure
-    {
-        if (cdSector.getSectorIndexFromStart() < _iStartSector ||
-            cdSector.getSectorIndexFromStart() > _iEndSectorInclusive)
+    @Override
+    public @Nonnull Class<SectorXaAudio> getListeningFor() {
+        return SectorXaAudio.class;
+    }
+
+    @Override
+    public void feedSector(@Nonnull SectorXaAudio xaSector, @Nonnull ILocalizedLogger log) throws LoggedFailure {
+        if (xaSector.getSectorNumber() < _iStartSector ||
+            xaSector.getSectorNumber() > _iEndSectorInclusive)
             return;
 
-        if (xaSector == null)
-            return;
-        if (xaSector.getChannel() != _iChannel ||
+        if (xaSector.getFileNumber() != _iFileNumber ||
+            xaSector.getChannel() != _iChannel ||
             xaSector.getAdpcmBitsPerSample() != _decoder.getAdpcmBitsPerSample() ||
             xaSector.isStereo() != _decoder.isStereo() ||
             xaSector.getSamplesPerSecond() != _iSampleFramesPerSecond)
@@ -112,16 +116,16 @@ public class SectorXaAudioToAudioPacket implements SectorClaimToSectorXaAudio.Li
             log.log(Level.WARNING, I.XA_AUDIO_CORRUPTED(xaSector.getSectorNumber(), lngSamplesWritten));
 
         if (_listener != null) {
-            DecodedAudioPacket packet = new DecodedAudioPacket(_iChannel, _audioFormat,
-                                                               new Fraction(xaSector.getSectorNumber()),
-                                                               _tempBuffer.toByteArray());
+            SectorBasedDecodedAudioPacket packet = new SectorBasedDecodedAudioPacket(_iChannel, _audioFormat,
+                                                                                     _tempBuffer.toByteArray(),
+                                                                                     xaSector.getSectorNumber());
 
             _listener.audioPacketComplete(packet, log);
         }
     }
-    public void xaEof(int iChannel) {
-    }
-    public void endOfSectors(@Nonnull ILocalizedLogger log) {
+
+    @Override
+    public void endOfFeedSectors(@Nonnull ILocalizedLogger log) throws LoggedFailure {
     }
 
 

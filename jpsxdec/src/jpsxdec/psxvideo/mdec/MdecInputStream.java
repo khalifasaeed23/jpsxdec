@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -46,7 +46,7 @@ public interface MdecInputStream {
 
     /** Reads the next MDEC code from the stream into the provided
      * {@link MdecCode} object.
-     * 
+     *
      *  @return true if the EOD code was read. */
     boolean readMdecCode(@Nonnull MdecCode code)
             throws MdecException.EndOfStream, MdecException.ReadCorruption;

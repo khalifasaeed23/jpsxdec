@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2012-2019  Michael Sabin
+ * Copyright (C) 2012-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -51,17 +51,21 @@ import jpsxdec.psxvideo.mdec.idct.SimpleIDCT;
 
 public enum MdecDecodeQuality {
     LOW(I.QUALITY_FAST_DESCRIPTION(), I.QUALITY_FAST_COMMAND()) {
+        @Override
         public MdecDecoder makeDecoder(int iWidth, int iHeight) {
             return new MdecDecoder_int(new SimpleIDCT(), iWidth, iHeight);
         }
     },
     HIGH(I.QUALITY_HIGH_DESCRIPTION(), I.QUALITY_HIGH_COMMAND()) {
+        @Override
         public MdecDecoder makeDecoder(int iWidth, int iHeight) {
             return new MdecDecoder_double(new PsxMdecIDCT_double(), iWidth, iHeight);
         }
+        @Override
         public boolean canUpsample() { return true; }
     },
     PSX(I.QUALITY_PSX_DESCRIPTION(), I.QUALITY_PSX_COMMAND()) {
+        @Override
         public MdecDecoder makeDecoder(int iWidth, int iHeight) {
             return new MdecDecoder_int(new PsxMdecIDCT_int(), iWidth, iHeight);
         }
@@ -90,5 +94,6 @@ public enum MdecDecodeQuality {
     abstract public @Nonnull MdecDecoder makeDecoder(int iWidth, int iHeight);
 
     public @Nonnull ILocalizedMessage getCmdLine() { return _cmdLine; }
+    @Override
     public String toString() { return _guiDescription.getLocalizedMessage(); }
 }

@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -62,7 +62,7 @@ public class AviWriterDIB extends AviWriter {
     // -------------------------------------------------------------------------
     // -- Constructors ---------------------------------------------------------
     // -------------------------------------------------------------------------
-    
+
     public AviWriterDIB(final @Nonnull File outputfile,
                         final int iWidth, final int iHeight,
                         final long lngFrames, final long lngPerSecond)
@@ -73,7 +73,7 @@ public class AviWriterDIB extends AviWriter {
              lngFrames, lngPerSecond,
              null);
     }
-    
+
     /** Audio data must be signed 16-bit PCM in little-endian order. */
     public AviWriterDIB(final @Nonnull File outputfile,
                         final int iWidth, final int iHeight,
@@ -97,7 +97,7 @@ public class AviWriterDIB extends AviWriter {
     // -------------------------------------------------------------------------
     // -- Writing functions ----------------------------------------------------
     // -------------------------------------------------------------------------
-    
+
     /** @param abData  RGB image data stored at 24 bits/pixel (3 bytes/pixel) */
     public void writeFrameRGB(@Nonnull byte[] abData, int iStart, int iLineStride) throws IOException {
         final int WIDTH = getWidth(), HEIGHT = getHeight();
@@ -163,9 +163,9 @@ public class AviWriterDIB extends AviWriter {
     public void writeBlankFrame() throws IOException {
         if (_abWriteBuffer == null || _abWriteBuffer.length < _iFrameByteSize)
             _abWriteBuffer = new byte[_iFrameByteSize];
-        
+
         Arrays.fill(_abWriteBuffer, 0, _iFrameByteSize, (byte)0);
-        
+
         writeFrameChunk(_abWriteBuffer, 0, _iFrameByteSize);
     }
 

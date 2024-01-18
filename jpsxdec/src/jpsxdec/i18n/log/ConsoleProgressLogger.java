@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -62,22 +62,27 @@ public class ConsoleProgressLogger extends ProgressLogger implements UserFriendl
         setListener(this);
     }
 
+    @Override
     public void onWarn(@Nonnull ILocalizedMessage msg) {
         _iWarnCount++;
     }
+    @Override
     public void onErr(@Nonnull ILocalizedMessage msg) {
         _iErrCount++;
     }
 
+    @Override
     public void event(@Nonnull ILocalizedMessage msg) {
         _lastEvent = msg;
     }
 
+    @Override
     protected void handleProgressEnd() {
         _progressStream.println(buildProgress(1));
         _dblNextProgressMark = 0;
     }
 
+    @Override
     protected void handleProgressStart() {
         _dblNextProgressMark = 0;
         _iWarnCount = 0;
@@ -85,6 +90,7 @@ public class ConsoleProgressLogger extends ProgressLogger implements UserFriendl
         _lastEvent = null;
     }
 
+    @Override
     protected void handleProgressUpdate(double dblPercentComplete) {
 
         if (dblPercentComplete < _dblNextProgressMark) {
@@ -101,7 +107,7 @@ public class ConsoleProgressLogger extends ProgressLogger implements UserFriendl
         // resets the cursor position back to the beginning of the line
         // but for now just do normal new line
         _progressStream.println(line);
-        
+
         _dblNextProgressMark = Math.round((dblPercentComplete + 0.05) * 10.0) / 10.0;
     }
 
@@ -122,6 +128,7 @@ public class ConsoleProgressLogger extends ProgressLogger implements UserFriendl
             return I.CMD_PROGRESS_WITH_MSG(progressBar.toString(), dblPercentComplete, _lastEvent, _iWarnCount, _iErrCount);
     }
 
+    @Override
     public boolean isSeekingEvent() { return true; }
 
 }

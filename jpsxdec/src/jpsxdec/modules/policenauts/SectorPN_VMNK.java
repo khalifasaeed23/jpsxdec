@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2019  Michael Sabin
+ * Copyright (C) 2019-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -39,9 +39,9 @@ package jpsxdec.modules.policenauts;
 
 import javax.annotation.Nonnull;
 import jpsxdec.cdreaders.CdSector;
-import jpsxdec.modules.IdentifiedSector;
 
-public class SectorPN_VMNK extends IdentifiedSector {
+/** @see SPacket */
+public class SectorPN_VMNK extends SectorPolicenauts {
 
     public static final int WIDTH = 288;
     public static final int HEIGHT = 144;
@@ -61,7 +61,7 @@ public class SectorPN_VMNK extends IdentifiedSector {
     private int _iHeight;
 
     public SectorPN_VMNK(@Nonnull CdSector cdSector) {
-        super(cdSector);
+        super(cdSector, false);
         if (isSuperInvalidElseReset()) return;
 
         for (int i = 0; i < VMNK_HEADER.length; i++) {
@@ -84,6 +84,7 @@ public class SectorPN_VMNK extends IdentifiedSector {
         setProbability(100);
     }
 
+    @Override
     public @Nonnull String getTypeName() {
         return "Policenauts VMNK";
     }

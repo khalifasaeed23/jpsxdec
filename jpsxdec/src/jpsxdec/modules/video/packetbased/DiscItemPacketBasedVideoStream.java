@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2012-2019  Michael Sabin
+ * Copyright (C) 2012-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -39,17 +39,18 @@ package jpsxdec.modules.video.packetbased;
 
 import java.util.Date;
 import javax.annotation.Nonnull;
-import jpsxdec.cdreaders.CdFileSectorReader;
-import jpsxdec.discitems.DiscItemSaverBuilder;
+import jpsxdec.cdreaders.DiscSpeed;
+import jpsxdec.cdreaders.ICdSectorReader;
+import jpsxdec.discitems.Dimensions;
 import jpsxdec.discitems.SerializedDiscItem;
 import jpsxdec.i18n.I;
 import jpsxdec.i18n.ILocalizedMessage;
 import jpsxdec.i18n.exception.LocalizedDeserializationFail;
 import jpsxdec.modules.player.MediaPlayer;
-import jpsxdec.modules.video.Dimensions;
 import jpsxdec.modules.video.DiscItemVideoStream;
-import jpsxdec.modules.video.ISectorClaimToDemuxedFrame;
+import jpsxdec.modules.video.ISectorClaimToFrameAndAudio;
 import jpsxdec.modules.video.framenumber.IndexSectorFrameNumber;
+import jpsxdec.util.Fraction;
 import jpsxdec.util.Misc;
 import jpsxdec.util.player.PlayController;
 
@@ -59,7 +60,7 @@ public abstract class DiscItemPacketBasedVideoStream extends DiscItemVideoStream
     private static final String SOUND_UNIT_COUNT_KEY = "Sound unit count";
     private final int _iSoundUnitCount;
 
-    public DiscItemPacketBasedVideoStream(@Nonnull CdFileSectorReader cd,
+    public DiscItemPacketBasedVideoStream(@Nonnull ICdSectorReader cd,
                                           int iStartSector, int iEndSector,
                                           @Nonnull Dimensions dim,
                                           @Nonnull IndexSectorFrameNumber.Format sectorIndexFrameNumberFormat,
@@ -68,8 +69,8 @@ public abstract class DiscItemPacketBasedVideoStream extends DiscItemVideoStream
         super(cd, iStartSector, iEndSector, dim, sectorIndexFrameNumberFormat);
         _iSoundUnitCount = iSoundUnitCount;
     }
-    
-    public DiscItemPacketBasedVideoStream(@Nonnull CdFileSectorReader cd, @Nonnull SerializedDiscItem fields)
+
+    public DiscItemPacketBasedVideoStream(@Nonnull ICdSectorReader cd, @Nonnull SerializedDiscItem fields)
             throws LocalizedDeserializationFail
     {
         super(cd, fields);
@@ -88,14 +89,9 @@ public abstract class DiscItemPacketBasedVideoStream extends DiscItemVideoStream
     }
 
     @Override
-    final public int getDiscSpeed() {
-        return 2; // this doesn't really matter
-    }
-
-    @Override
     final public @Nonnull ILocalizedMessage getInterestingDescription() {
         int iFrames = getFrameCount();
-        double dblFps = getPacketBasedFpsInterestingDescription();
+        double dblFps = getFramesPerSecond().asDouble();
         Date secs = Misc.dateFromSeconds(Math.max(iFrames / (int)Math.round(dblFps), 1));
         if (hasAudio())
             return I.GUI_PACKET_BASED_VID_DETAILS_WITH_AUDIO(getWidth() ,getHeight(), iFrames, dblFps, secs, getAudioSampleFramesPerSecond());
@@ -103,34 +99,20 @@ public abstract class DiscItemPacketBasedVideoStream extends DiscItemVideoStream
             return I.GUI_PACKET_BASED_VID_DETAILS(getWidth() ,getHeight(), iFrames, dblFps, secs);
     }
 
-    abstract protected double getPacketBasedFpsInterestingDescription();
+    abstract public @Nonnull Fraction getFramesPerSecond();
 
-    @Override
-    final public int getAbsolutePresentationStartSector() {
-        return getStartSector();
-    }
-
-    abstract public @Nonnull SectorClaimToAudioAndFrame makeAudioVideoDemuxer(double dblVolume);
+    abstract public @Nonnull ISectorClaimToFrameAndAudio makeVideoAudioStream(double dblVolume);
     abstract public int getAudioSampleFramesPerSecond();
 
     @Override
-    final public ISectorClaimToDemuxedFrame makeDemuxer() {
-        return makeAudioVideoDemuxer(1.0);
-    }
-
-    @Override
-    final public DiscItemSaverBuilder makeSaverBuilder() {
+    final public @Nonnull PacketBasedVideoSaverBuilder makeSaverBuilder() {
         return new PacketBasedVideoSaverBuilder(this);
     }
 
     @Override
     final public @Nonnull PlayController makePlayController() {
-        SectorClaimToAudioAndFrame demuxer = makeAudioVideoDemuxer(1.0);
-        MediaPlayer mp;
-        if (hasAudio())
-            mp = new MediaPlayer(this, demuxer, demuxer, getStartSector(), getEndSector());
-        else
-            mp = new MediaPlayer(this, demuxer, getStartSector(), getEndSector());
+        ISectorClaimToFrameAndAudio sc2fa = makeVideoAudioStream(1.0);
+        MediaPlayer mp = new MediaPlayer(this, sc2fa, DiscSpeed.DOUBLE);
         return mp.getPlayController();
     }
 

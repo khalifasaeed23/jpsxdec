@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -56,7 +56,7 @@ import jpsxdec.util.Misc;
  * various bits of information for easy access to the {@link DiscItem}.
  */
 public class SerializedDiscItem {
-    
+
     private static final String KEY_VALUE_DELIMITER = ":";
     private static final String FIELD_DELIMITER = "|";
 
@@ -73,7 +73,7 @@ public class SerializedDiscItem {
      * this object will still work and can be serialized. However, the resulting
      * serialization cannot be deserialized.
      *
-     * @param iIndex if {@code < 0} then index number is not included. 
+     * @param iIndex if {@code < 0} then index number is not included.
      * @param sIndexId if {@code null} then index id is not included. */
     public SerializedDiscItem(@Nonnull String sType, int iIndex,
                               @CheckForNull String sIndexId,
@@ -86,7 +86,7 @@ public class SerializedDiscItem {
         addStringNoKeyNameCheck(TYPE_KEY, sType);
         addRangeNoKeyNameCheck(SECTOR_RANGE_KEY, iSectorStart, iSectorEnd);
     }
-    
+
     /** Parses a serialization string and makes the information available
      *  through the accessors. */
     public SerializedDiscItem(@Nonnull String sSerialized) throws LocalizedDeserializationFail {
@@ -109,9 +109,9 @@ public class SerializedDiscItem {
     /** Converts the data into a string. No additional data may be added to the
      *  object without throwing an exception. */
     public @Nonnull String serialize() {
-        
+
         LinkedHashMap<String, String> fieldsCopy = new LinkedHashMap<String, String>(_fields);
-        
+
         StringBuilder sb = new StringBuilder();
 
         // want to handle the required fields first
@@ -146,10 +146,10 @@ public class SerializedDiscItem {
             sb.append(KEY_VALUE_DELIMITER);
             sb.append(entry.getValue());
         }
-        
+
         return sb.toString();
     }
-    
+
     // =========================================================================
 
     final public void addString(@Nonnull String sFieldName, @Nonnull String sValue) {
@@ -166,7 +166,7 @@ public class SerializedDiscItem {
         checkValidKeyName(sFieldName);
         addStringNoKeyNameCheck(sFieldName, blnYesNo ? "Yes" : "No");
     }
-    
+
     final public void addNumber(@Nonnull String sFieldName, long lngValue) {
         checkValidKeyName(sFieldName);
         addNumberNoKeyNameCheck(sFieldName, lngValue);
@@ -190,7 +190,8 @@ public class SerializedDiscItem {
      * @param lngEnd   Must be {@code >= 0}
      */
     public void addRangeNoKeyNameCheck(@Nonnull String sFieldName, long lngStart, long lngEnd) {
-        if (lngStart < 0 || lngEnd < 0) throw new IllegalArgumentException("Range values must be >= 0");
+        if (lngStart < 0 || lngEnd < 0)
+            throw new IllegalArgumentException("Range values must be >= 0");
         checkValidKey(sFieldName);
         _fields.put(sFieldName, String.format("%d-%d", lngStart, lngEnd) );
     }
@@ -200,21 +201,11 @@ public class SerializedDiscItem {
      * @param lngDenominator Must be {@code >= 0}
      */
     public void addFraction(@Nonnull String sFieldName, long lngNumerator, long lngDenominator) {
-        if (lngNumerator < 0 || lngDenominator < 0) throw new IllegalArgumentException("Fraction values must be >= 0");
+        if (lngNumerator < 0 || lngDenominator < 0)
+            throw new IllegalArgumentException("Fraction values must be >= 0");
         checkValidKey(sFieldName);
         checkValidKeyName(sFieldName);
         _fields.put(sFieldName, String.format("%d/%d", lngNumerator, lngDenominator) );
-    }
-    
-    /**
-     * @param iWidth  Must be {@code >= 0}
-     * @param iHeight Must be {@code >= 0}
-     */
-    public void addDimensions(@Nonnull String sFieldName, int iWidth, int iHeight) {
-        if (iWidth < 0 || iHeight < 0) throw new IllegalArgumentException("Range values must be >= 0");
-        checkValidKey(sFieldName);
-        checkValidKeyName(sFieldName);
-        _fields.put(sFieldName, String.format("%dx%d", iWidth, iHeight) );
     }
 
     private static void checkValidValue(String sValue) {
@@ -236,17 +227,18 @@ public class SerializedDiscItem {
 
     // =========================================================================
     // Reading fields
-    
+
     public boolean hasField(@Nonnull String sFieldName) {
         return _fields.containsKey(sFieldName);
     }
 
     public @Nonnull String getString(@Nonnull String sFieldName) throws LocalizedDeserializationFail {
         String sValue = _fields.get(sFieldName);
-        if (sValue == null) throw new LocalizedDeserializationFail(I.SERIALIZATION_FIELD_NOT_FOUND(sFieldName));
+        if (sValue == null)
+            throw new LocalizedDeserializationFail(I.SERIALIZATION_FIELD_NOT_FOUND(sFieldName));
         return sValue;
     }
-    
+
     public @Nonnull boolean getYesNo(@Nonnull String sFieldName) throws LocalizedDeserializationFail {
         String sValue = getString(sFieldName);
 
@@ -260,17 +252,17 @@ public class SerializedDiscItem {
 
     public long getLong(@Nonnull String sFieldName) throws LocalizedDeserializationFail {
         String sValue = getString(sFieldName);
-        
+
         try {
             return Long.parseLong(sValue);
         } catch (NumberFormatException e) {
             throw new LocalizedDeserializationFail(I.SERIALIZATION_FAILED_TO_CONVERT_TO_NUMBER(sValue));
         }
     }
-    
+
     public int getInt(@Nonnull String sFieldName) throws LocalizedDeserializationFail {
         String sValue = getString(sFieldName);
-        
+
         try {
             return Integer.parseInt(sValue);
         } catch (NumberFormatException e) {
@@ -292,9 +284,9 @@ public class SerializedDiscItem {
 
     public @Nonnull int[] getIntRange(@Nonnull String sFieldName) throws LocalizedDeserializationFail {
         String sValue = getString(sFieldName);
-        int[] ai = Misc.splitInt(sValue, "\\D+");
-        if (ai == null || ai.length != 2) throw new LocalizedDeserializationFail(
-                I.SERIALIZATION_FAILED_TO_CONVERT_TO_RANGE(sValue));
+        int[] ai = Misc.splitInt(sValue, "-");
+        if (ai == null || ai.length != 2)
+            throw new LocalizedDeserializationFail(I.SERIALIZATION_FAILED_TO_CONVERT_TO_RANGE(sValue));
 
         return ai;
     }
@@ -302,14 +294,10 @@ public class SerializedDiscItem {
     public @Nonnull long[] getLongRange(@Nonnull String sFieldName) throws LocalizedDeserializationFail {
         String sValue = getString(sFieldName);
         long[] alng = Misc.splitLong(sValue, "\\D+");
-        if (alng == null || alng.length != 2) throw new LocalizedDeserializationFail(
-                I.SERIALIZATION_FAILED_TO_CONVERT_TO_RANGE(sValue));
+        if (alng == null || alng.length != 2)
+            throw new LocalizedDeserializationFail(I.SERIALIZATION_FAILED_TO_CONVERT_TO_RANGE(sValue));
 
         return alng;
-    }
-
-    public @Nonnull int[] getDimensions(@Nonnull String sFieldName) throws LocalizedDeserializationFail {
-        return getIntRange(sFieldName);
     }
 
     public @Nonnull long[] getFraction(@Nonnull String sFieldName) throws LocalizedDeserializationFail {
@@ -317,7 +305,7 @@ public class SerializedDiscItem {
     }
 
     // -- required fields --------------
-    
+
     public @Nonnull String getType() {
         return _fields.get(TYPE_KEY);
     }

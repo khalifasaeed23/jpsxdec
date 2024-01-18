@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2013-2019  Michael Sabin
+ * Copyright (C) 2013-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -44,7 +44,7 @@ import jpsxdec.i18n.exception.LocalizedException;
 
 
 public class CommandLineException extends LocalizedException {
-    
+
     public CommandLineException(@Nonnull ILocalizedMessage msg) {
         super(msg);
     }

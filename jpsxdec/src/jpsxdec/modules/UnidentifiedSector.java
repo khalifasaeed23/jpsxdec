@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -46,11 +46,13 @@ import jpsxdec.cdreaders.CdSector;
  * Currently not actually used due to the TODO below. */
 public class UnidentifiedSector extends IdentifiedSector {
 
+    public static final String TYPE_NAME = "Unknown";
+
     /**
      * @throws IllegalArgumentException if {@link CdSector#isCdAudioSector()} is true.
      */
     // TODO: don't want to use IllegalArgumentException
-    private UnidentifiedSector(@Nonnull CdSector cdSector) throws IllegalArgumentException {
+    public UnidentifiedSector(@Nonnull CdSector cdSector) throws IllegalArgumentException {
         super(cdSector);
 
         if (cdSector.isCdAudioSector())
@@ -59,13 +61,22 @@ public class UnidentifiedSector extends IdentifiedSector {
         setProbability(100);
     }
 
+    @Override
     public @Nonnull String getTypeName() {
-        return "Unknown";
+        return TYPE_NAME;
     }
 
     @Override
     public String toString() {
-        return getTypeName() + " " + super.toString();
+        CdSector cdSector = getCdSector();
+        StringBuilder sb = new StringBuilder(" ");
+        // add the first 32 bytes for unknown sectors
+        // may be helpful for identifying them
+        for (int i = 0; i < 32; i++) {
+            sb.append(String.format("%02x", cdSector.readUserDataByte(i)));
+        }
+
+        return getTypeName() + " " + cdToString() + sb;
     }
 
 }

@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -41,19 +41,20 @@ import java.io.PrintStream;
 import java.util.List;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
-import jpsxdec.cdreaders.CdFileSectorReader;
+import jpsxdec.cdreaders.DiscPatcher;
 import jpsxdec.i18n.exception.LoggedFailure;
 import jpsxdec.i18n.log.ILocalizedLogger;
-import jpsxdec.modules.video.IDemuxedFrame;
 import jpsxdec.modules.video.framenumber.FrameNumber;
+import jpsxdec.modules.video.sectorbased.ISectorBasedDemuxedFrame;
+import jpsxdec.modules.video.sectorbased.SectorBasedFrameAnalysis;
 import jpsxdec.modules.video.sectorbased.SectorBasedFrameReplace;
-import jpsxdec.psxvideo.mdec.MdecInputStream;
+import jpsxdec.psxvideo.bitstreams.BitStreamAnalysis;
+import jpsxdec.psxvideo.bitstreams.IBitStreamUncompressor;
 import jpsxdec.util.DemuxedData;
-import jpsxdec.util.Fraction;
 
 
-public class DemuxedAc3Frame implements IDemuxedFrame {
-    
+public class DemuxedAc3Frame implements ISectorBasedDemuxedFrame {
+
     private final int _iWidth;
     private final int _iHeight;
 
@@ -62,11 +63,11 @@ public class DemuxedAc3Frame implements IDemuxedFrame {
 
     @Nonnull
     private final DemuxedData<SectorAceCombat3Video> _demux;
-    
+
     @CheckForNull
     private FrameNumber _frameNumber;
 
-    public DemuxedAc3Frame(int iWidth, int iHeight, int iInvFrameNumber, 
+    public DemuxedAc3Frame(int iWidth, int iHeight, int iInvFrameNumber,
                            int iChannel, @Nonnull List<SectorAceCombat3Video> demux)
     {
         _demux = new DemuxedData<SectorAceCombat3Video>(demux);
@@ -81,45 +82,54 @@ public class DemuxedAc3Frame implements IDemuxedFrame {
     void setFrame(@Nonnull FrameNumber frameNumber) {
         _frameNumber = frameNumber;
     }
+    @Override
     public @Nonnull FrameNumber getFrame() {
         if (_frameNumber == null)
             throw new IllegalStateException();
         return _frameNumber;
     }
 
-    public @CheckForNull MdecInputStream getCustomFrameMdecStream() {
+    @Override
+    public @CheckForNull IBitStreamUncompressor getCustomFrameMdecStream() {
         return null;
     }
 
+    @Override
     public int getWidth() { return _iWidth; }
+    @Override
     public int getHeight() { return _iHeight; }
+    @Override
     public int getStartSector() { return _demux.getStartSector(); }
+    @Override
     public int getEndSector() { return _demux.getEndSector(); }
-    public @Nonnull Fraction getPresentationSector() { return new Fraction(getEndSector()); }
+    @Override
+    public int getPresentationSector() { return getEndSector(); }
     public int getInvertedHeaderFrameNumber() { return _iInvFrameNumber; }
     public int getChannel() { return _iChannel; }
 
+    @Override
     public int getDemuxSize() { return _demux.getDemuxSize(); }
-    
+
+    @Override
     public @Nonnull byte[] copyDemuxData() {
         return _demux.copyDemuxData();
     }
 
+    @Override
     public void printSectors(@Nonnull PrintStream ps) {
         for (SectorAceCombat3Video vidSector : _demux) {
             ps.println(vidSector);
         }
     }
 
-    public void writeToSectors(@Nonnull byte[] abNewDemux,
-                               int iNewUsedSize, int iNewMdecCodeCount,
-                               @Nonnull CdFileSectorReader cd,
+    @Override
+    public void writeToSectors(@Nonnull SectorBasedFrameAnalysis existingFrame,
+                               @Nonnull BitStreamAnalysis newFrame,
+                               @Nonnull DiscPatcher patcher,
                                @Nonnull ILocalizedLogger log)
             throws LoggedFailure
     {
-        SectorBasedFrameReplace.writeToSectors(abNewDemux, iNewUsedSize,
-                                               iNewMdecCodeCount, cd, log,
-                                               _demux);
+        SectorBasedFrameReplace.writeToSectors(existingFrame, newFrame, patcher, log, _demux);
     }
 
     @Override

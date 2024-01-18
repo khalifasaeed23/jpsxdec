@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -50,10 +50,11 @@ import org.junit.runners.Suite;
     jpsxdec.cmdline.Command_StaticTest.class,
     jpsxdec.discitems.DiscItemTest.class,
     jpsxdec.discitems.SerializedDiscItemTest.class,
+    jpsxdec.formats.YCbCrImageTest.class,
     jpsxdec.indexing.DiscIndexerXaAudioTest.class,
-    jpsxdec.modules.crusader.DiscIndexerCrusaderTest.class,
     jpsxdec.modules.video.sectorbased.fps.Fps.class,
-    jpsxdec.psxvideo.PsxYCbCr_intTest.class,
+    jpsxdec.modules.xa.DiscItemXaAudioStreamTest.class,
+    jpsxdec.psxvideo.PsxYCbCrTest.class,
     jpsxdec.psxvideo.bitstreams.BitReader.class,
     jpsxdec.psxvideo.bitstreams.Iki.class,
     jpsxdec.psxvideo.bitstreams.STRv2.class,
@@ -62,6 +63,7 @@ import org.junit.runners.Suite;
     jpsxdec.util.ArgParserTest.class,
     jpsxdec.util.DemuxPushInputStreamTest.class,
     jpsxdec.util.DemuxedDataTest.class,
+    jpsxdec.util.FractionTest.class,
     jpsxdec.util.IOTest.class,
     jpsxdec.util.MiscTest.class,
     jpsxdec.util.player.ClosableBoundedBlockingQueueTest.class

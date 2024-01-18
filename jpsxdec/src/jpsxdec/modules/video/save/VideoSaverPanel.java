@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -38,15 +38,11 @@
 package jpsxdec.modules.video.save;
 
 import com.jhlabs.awt.ParagraphLayout;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.awt.event.ItemEvent;
 import java.io.File;
 import javax.annotation.Nonnull;
-import javax.swing.ButtonGroup;
 import javax.swing.JCheckBox;
 import javax.swing.JLabel;
-import javax.swing.JRadioButton;
 import javax.swing.JTextArea;
 import javax.swing.JToggleButton.ToggleButtonModel;
 import javax.swing.event.ChangeEvent;
@@ -55,7 +51,6 @@ import jpsxdec.discitems.CombinedBuilderListener;
 import jpsxdec.discitems.ParagraphPanel;
 import jpsxdec.i18n.I;
 import jpsxdec.psxvideo.mdec.ChromaUpsample;
-import jpsxdec.util.Fraction;
 
 /** Abstract {@link ParagraphPanel} shared among video
  * {@link jpsxdec.discitems.DiscItemSaverBuilder}s. */
@@ -69,20 +64,19 @@ public abstract class VideoSaverPanel<T extends VideoSaverBuilder> extends Parag
         _bl = bl;
         _bl.addListeners(
             new FileName(),
-            new VideoFormat(),
+            new VideoFormatCombo(),
             new Crop(),
-            new DiscSpeed(),
             new DecodeQuality(),
             new ChromaUpsampling()
         );
     }
 
-    private class VideoFormat extends AbstractCombo {
-        public VideoFormat() { super(I.GUI_VIDEO_FORMAT_LABEL(), true); }
+    private class VideoFormatCombo extends AbstractCombo<VideoFormat> {
+        public VideoFormatCombo() { super(I.GUI_VIDEO_FORMAT_LABEL(), true); }
         public int getSize() {
             return _bl.getBuilder().getVideoFormat_listSize();
         }
-        public Object getElementAt(int index) {
+        public VideoFormat getElementAt(int index) {
             return _bl.getBuilder().getVideoFormat_listItem(index);
         }
         public void setSelectedItem(Object anItem) {
@@ -94,18 +88,18 @@ public abstract class VideoSaverPanel<T extends VideoSaverBuilder> extends Parag
         protected boolean getEnabled() { return true; }
     }
 
-    private class DecodeQuality extends AbstractCombo {
+    private class DecodeQuality extends AbstractCombo<MdecDecodeQuality> {
         public DecodeQuality() { super(I.GUI_DECODE_QUALITY_LABEL(), true); }
         public int getSize() {
             return _bl.getBuilder().getDecodeQuality_listSize();
         }
-        public Object getElementAt(int index) {
+        public MdecDecodeQuality getElementAt(int index) {
             return _bl.getBuilder().getDecodeQuality_listItem(index);
         }
         public void setSelectedItem(Object anItem) {
             _bl.getBuilder().setDecodeQuality((MdecDecodeQuality) anItem);
         }
-        public Object getSelectedItem() {
+        public MdecDecodeQuality getSelectedItem() {
             return _bl.getBuilder().getDecodeQuality();
         }
         protected boolean getEnabled() {
@@ -114,18 +108,18 @@ public abstract class VideoSaverPanel<T extends VideoSaverBuilder> extends Parag
     }
 
 
-    private class ChromaUpsampling extends AbstractCombo {
+    private class ChromaUpsampling extends AbstractCombo<ChromaUpsample> {
         public ChromaUpsampling() { super(I.GUI_CHROMA_UPSAMPLING_LABEL(), true); }
         public int getSize() {
             return _bl.getBuilder().getChromaInterpolation_listSize();
         }
-        public Object getElementAt(int index) {
+        public ChromaUpsample getElementAt(int index) {
             return _bl.getBuilder().getChromaInterpolation_listItem(index);
         }
         public void setSelectedItem(Object anItem) {
             _bl.getBuilder().setChromaInterpolation((ChromaUpsample) anItem);
         }
-        public Object getSelectedItem() {
+        public ChromaUpsample getSelectedItem() {
             return _bl.getBuilder().getChromaInterpolation();
         }
         protected boolean getEnabled() {
@@ -164,50 +158,6 @@ public abstract class VideoSaverPanel<T extends VideoSaverBuilder> extends Parag
         }
         public boolean isEnabled() {
             return _bl.getBuilder().getCrop_enabled();
-        }
-    }
-
-    private class DiscSpeed implements ChangeListener, ActionListener {
-        final ButtonGroup __grp = new ButtonGroup();
-        final JLabel __label = new JLabel(I.GUI_DISC_SPEED_LABEL().getLocalizedMessage());
-        final JLabel __fps = new JLabel();
-        boolean __cur;
-        final JRadioButton __1x = new JRadioButton(I.DISC_SPEED_1X().getLocalizedMessage()),
-                           __2x = new JRadioButton(I.DISC_SPEED_2X().getLocalizedMessage());
-        public DiscSpeed() {
-            add(__label, ParagraphLayout.NEW_PARAGRAPH);
-            add(__1x);
-            add(__2x);
-            __grp.add(__1x);
-            __grp.add(__2x);
-            __1x.addActionListener(this);
-            __2x.addActionListener(this);
-            add(__fps);
-        }
-        public void stateChanged(ChangeEvent e) {
-            updateFps();
-            boolean blnEnabled = _bl.getBuilder().getSingleSpeed_enabled();
-            __label.setEnabled(blnEnabled);
-            __1x.setEnabled(blnEnabled);
-            __2x.setEnabled(blnEnabled);
-            if (_bl.getBuilder().getSingleSpeed())
-                __grp.setSelected(__1x.getModel(), true);
-            else
-                __grp.setSelected(__2x.getModel(), true);
-        }
-        public void actionPerformed(ActionEvent e) {
-            if (e.getSource() == __1x)
-                _bl.getBuilder().setSingleSpeed(true);
-            else
-                _bl.getBuilder().setSingleSpeed(false);
-        }
-        private void updateFps() {
-            Fraction fps = _bl.getBuilder().getFps();
-            if ((fps.getNumerator() % fps.getDenominator()) == 0)
-                __fps.setText(I.GUI_FPS_LABLE_WHOLE_NUMBER(fps.getNumerator() / fps.getDenominator()).getLocalizedMessage());
-            else
-                __fps.setText(I.GUI_FPS_LABEL_FRACTION(fps.asDouble(),
-                              fps.getNumerator(), fps.getDenominator()).getLocalizedMessage());
         }
     }
 

@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2018-2019  Michael Sabin
+ * Copyright (C) 2018-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -41,8 +41,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import javax.annotation.Nonnull;
 import jpsxdec.i18n.log.ILocalizedLogger;
-import jpsxdec.modules.video.sectorbased.DemuxedFrameWithNumberAndDims;
 import jpsxdec.modules.video.sectorbased.ISelfDemuxingVideoSector;
+import jpsxdec.modules.video.sectorbased.SectorBasedDemuxedFrameWithNumberAndDims;
 import jpsxdec.modules.video.sectorbased.SectorBasedFrameBuilder;
 
 public class FF9Demuxer implements ISelfDemuxingVideoSector.IDemuxer {
@@ -61,6 +61,7 @@ public class FF9Demuxer implements ISelfDemuxingVideoSector.IDemuxer {
         _iHeight = firstChunk.getHeight();
     }
 
+    @Override
     public boolean addSectorIfPartOfFrame(@Nonnull ISelfDemuxingVideoSector sector) {
         if (!(sector instanceof SectorFF9.SectorFF9Video))
             return false;
@@ -75,15 +76,18 @@ public class FF9Demuxer implements ISelfDemuxingVideoSector.IDemuxer {
                                             chunk.getHeaderFrameNumber());
     }
 
+    @Override
     public boolean isFrameComplete() {
         return _bldr.isFrameComplete();
     }
 
-    public @Nonnull DemuxedFrameWithNumberAndDims finishFrame(@Nonnull ILocalizedLogger log) {
+    @Override
+    public @Nonnull SectorBasedDemuxedFrameWithNumberAndDims finishFrame(@Nonnull ILocalizedLogger log) {
         ArrayList<SectorFF9.SectorFF9Video> sectors = _bldr.getNonNullChunks(log);
         // FF9 frames chunks are in reverse order
         Collections.reverse(sectors);
-        return new DemuxedFrameWithNumberAndDims(_iWidth, _iHeight, _bldr.getHeaderFrameNumber(),
-                                                 sectors);
+        return new SectorBasedDemuxedFrameWithNumberAndDims(_iWidth, _iHeight,
+                                                            _bldr.getHeaderFrameNumber(),
+                                                            sectors);
     }
 }

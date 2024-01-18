@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -44,70 +44,75 @@ import java.util.Enumeration;
 import java.util.NoSuchElementException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
-import jpsxdec.cdreaders.CdFileSectorReader;
+import jpsxdec.cdreaders.CdException;
 import jpsxdec.cdreaders.CdSector;
+import jpsxdec.cdreaders.ICdSectorReader;
 import jpsxdec.util.ByteArrayFPIS;
 
 /** Demuxes a series of {@link CdSector}s into a solid stream. */
 public class DemuxedSectorInputStream extends SequenceInputStream {
 
     private static final Logger LOG = Logger.getLogger(DemuxedSectorInputStream.class.getName());
-    
+
     private static class SectorEnumerator implements Enumeration<InputStream> {
         @Nonnull
-        public final CdFileSectorReader _cd;
+        public final ICdSectorReader _cd;
         private final int _iOffset;
         private final int _iStartSector;
         public int _iSector;
-        @CheckForNull
-        private ByteArrayFPIS _currentStream;
 
-        public SectorEnumerator(@Nonnull CdFileSectorReader cd, int iSector, int iOffset) {
+        public SectorEnumerator(@Nonnull ICdSectorReader cd, int iSector, int iOffset) {
             _cd = cd;
             _iStartSector = _iSector = iSector;
             _iOffset = iOffset;
         }
-        
+
+        @Override
         public boolean hasMoreElements() {
             return _iSector < _cd.getSectorCount();
         }
 
+        @Override
         public @Nonnull InputStream nextElement() {
             if (!hasMoreElements())
                 throw new NoSuchElementException();
+
+            CdSector sector;
             try {
-                // TODO: What to do with CD or form 2 sectors?
-                CdSector sector = _cd.getSector(_iSector);
-                if (sector.getCdUserDataSize() != CdSector.SECTOR_USER_DATA_SIZE_MODE1_MODE2FORM1) {
-                    LOG.log(Level.WARNING, "Demuxing non Mode1/Mode2Form1 sector {0}", sector);
-                }
-                _currentStream = sector.getCdUserDataStream();
-                if (_iSector == _iStartSector) {
-                    _currentStream.skip(_iOffset);
-                }
-                _iSector++;
-                return _currentStream;
-            } catch (final CdFileSectorReader.CdReadException ex) {
+                sector = _cd.getSector(_iSector);
+            } catch (final CdException.Read ex) {
                 LOG.log(Level.SEVERE, null, ex);
-                _currentStream = null;
                 return new InputStream() {
+                    @Override
                     public int read() throws IOException { throw ex; }
                 };
             }
+
+            // TODO: What to do with CD or form 2 sectors?
+            if (sector.getCdUserDataSize() != CdSector.SECTOR_USER_DATA_SIZE_MODE1_MODE2FORM1) {
+                LOG.log(Level.WARNING, "Demuxing non Mode1/Mode2Form1 sector {0}", sector);
+            }
+
+            ByteArrayFPIS currentStream = sector.getCdUserDataStream();
+            if (_iSector == _iStartSector) {
+                currentStream.skip(_iOffset);
+            }
+            _iSector++;
+
+            return currentStream;
         }
-        
+
     }
 
-    public DemuxedSectorInputStream(@Nonnull CdFileSectorReader cd, int iStartSector, int iOffset) {
+    public DemuxedSectorInputStream(@Nonnull ICdSectorReader cd, int iStartSector, int iOffset) {
         super(new SectorEnumerator(cd, iStartSector, iOffset));
     }
-    
+
     @Override
     public void close() {
         // no need to do anything
         // and definitely don't want to do what SequenceInputStream does
     }
-    
+
 }

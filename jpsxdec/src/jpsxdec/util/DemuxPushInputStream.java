@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -47,7 +47,7 @@ import javax.annotation.Nonnull;
 
 /**
  * A stream built by pushing pieces of data into it.
- * 
+ *
  * The end of once piece = the start of the next.
  * It is important that once hitting the end of a sector, to stay there
  * and not pull the extra sector in case there are no more (leading to EOF).
@@ -96,7 +96,7 @@ public class DemuxPushInputStream<T extends DemuxedData.Piece> extends InputStre
 
     // -------------------------------------------------------------------------
     // InputStream functions
-    
+
     @Override
     public int read() throws NeedsMoreData {
         if (_iMarkReadLimit < 0) {
@@ -113,7 +113,7 @@ public class DemuxPushInputStream<T extends DemuxedData.Piece> extends InputStre
 
         if (_markedStream != null)
             _iMarkReadLimit--;
-        
+
         return i;
     }
 
@@ -375,7 +375,7 @@ public class DemuxPushInputStream<T extends DemuxedData.Piece> extends InputStre
         public @Nonnull CopyablePieceSequenceStream<T> copy() {
             return new CopyablePieceSequenceStream<T>(_pieceIterator, _currentPieceStream, _iAvailable);
         }
-        
+
         public boolean isEof() {
             return _currentPieceStream.isEof() && !_pieceIterator.hasNext();
         }
@@ -385,13 +385,17 @@ public class DemuxPushInputStream<T extends DemuxedData.Piece> extends InputStre
         public int read() {
             if (isEof())
                 return -1;
-            while (_currentPieceStream.isEof() && _pieceIterator.hasNext()) {
-                _currentPieceStream = new PieceInputStream<T>(_pieceIterator.next());
-            }
+            skipEofStreams();
             if (isEof())
                 return -1;
             _iAvailable--;
             return _currentPieceStream.read();
+        }
+
+        private void skipEofStreams() {
+            while (_currentPieceStream.isEof() && _pieceIterator.hasNext()) {
+                _currentPieceStream = new PieceInputStream<T>(_pieceIterator.next());
+            }
         }
 
         @Override
@@ -399,16 +403,11 @@ public class DemuxPushInputStream<T extends DemuxedData.Piece> extends InputStre
             if (isEof())
                 return -1;
             long lngTotalBytesSkipped = 0;
-            while (_currentPieceStream.isEof() && _pieceIterator.hasNext()) {
-                _currentPieceStream = new PieceInputStream<T>(_pieceIterator.next());
-            }
             while (lngTotalBytesSkipped < lngBytesToSkip && !isEof()) {
+                skipEofStreams();
                 long lngBytesSkipped = _currentPieceStream.skip(lngBytesToSkip - lngTotalBytesSkipped);
                 if (lngBytesSkipped > 0)
                     lngTotalBytesSkipped += lngBytesSkipped;
-                while (_currentPieceStream.isEof() && _pieceIterator.hasNext()) {
-                    _currentPieceStream = new PieceInputStream<T>(_pieceIterator.next());
-                }
             }
             _iAvailable -= lngTotalBytesSkipped;
             return lngTotalBytesSkipped == 0 ? -1 : lngTotalBytesSkipped;

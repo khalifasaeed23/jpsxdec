@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2019  Michael Sabin
+ * Copyright (C) 2019-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -44,7 +44,7 @@ import javax.annotation.Nonnull;
 import jpsxdec.adpcm.SpuAdpcmDecoder;
 import jpsxdec.adpcm.SpuAdpcmSoundUnit;
 
-
+/** Wraps a {@link SPacketPos} with the actual packet data. */
 public class SPacketData {
 
     @Nonnull

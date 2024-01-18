@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2017-2019  Michael Sabin
+ * Copyright (C) 2017-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -128,19 +128,7 @@ public class DreddDemuxer {
         return false;
     }
 
-    /** Holds the completed frame and the sectors that made it. */
-    public static class FrameSectors {
-        @Nonnull
-        public final DemuxedDreddFrame frame;
-        @Nonnull
-        public final List<SectorDreddVideo> sectors;
-        public FrameSectors(DemuxedDreddFrame frame, List<SectorDreddVideo> sectors) {
-            this.frame = frame;
-            this.sectors = sectors;
-        }
-    }
-
-    public @CheckForNull FrameSectors tryToFinishFrame() {
+    public @CheckForNull List<SectorDreddVideo> tryToFinishFrame() {
         if (_sectors.size() < MIN_CHUNKS_PER_FRAME-1) {
             // not enough sectors
             return null; // sequence fail
@@ -177,13 +165,10 @@ public class DreddDemuxer {
         }
 
         DemuxedDreddFrame frame = new DemuxedDreddFrame(new DemuxedData<SectorDreddVideo>(_sectors), iHeight);
-
-        for (SectorDreddVideo sector : _sectors) {
-            sector.setDreddFrame(frame);
-        }
+        _sectors.get(_sectors.size() - 1)._dreddFrame = frame;
 
         // sector sequence success
-        return new FrameSectors(frame, _sectors);
+        return _sectors;
     }
 
 
@@ -195,7 +180,7 @@ public class DreddDemuxer {
         if (sh == null) return false;
         if (sh.getFileNumber() != 1 || sh.getChannel() != 2)
             return false;
-        if (sh.getSubMode().mask(~CdSectorXaSubHeader.SubMode.MASK_EOF_MARKER) != CdSectorXaSubHeader.SubMode.MASK_DATA)
+        if (sh.getSubMode().mask(~CdSectorXaSubHeader.SubMode.MASK_END_OF_FILE) != CdSectorXaSubHeader.SubMode.MASK_DATA)
             return false;
         return true;
     }
@@ -217,7 +202,7 @@ public class DreddDemuxer {
 
         return null;
     }
-    
+
     /** All Dredd frames are 320 pixels wide. */
     public static final int FRAME_WIDTH = 320;
     public static final int FRAME_HEIGHT_A = 352;
@@ -231,9 +216,7 @@ public class DreddDemuxer {
             BitStreamUncompressor bsu = strHeader.makeNew(abFullFrame);
             bsu.skipMacroBlocks(FRAME_WIDTH, FRAME_HEIGHT_B);
             return true;
-        } catch (MdecException.EndOfStream ex) {
-            return false;
-        } catch (MdecException.ReadCorruption ex) {
+        } catch (MdecException.EndOfStream | MdecException.ReadCorruption ex) {
             return false;
         } catch (BinaryDataNotRecognized ex) {
             return false;

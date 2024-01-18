@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -54,7 +54,7 @@ public class SavingGui extends javax.swing.JDialog implements PropertyChangeList
     @Nonnull
     private SavingGuiTask _saveAll;
 
-    public SavingGui(@Nonnull java.awt.Dialog parent, 
+    public SavingGui(@Nonnull java.awt.Dialog parent,
                      @Nonnull List<DiscItemSaverBuilder> builders,
                      @Nonnull String sCd, @CheckForNull File outputDir)
     {
@@ -77,7 +77,7 @@ public class SavingGui extends javax.swing.JDialog implements PropertyChangeList
         initComponents();
 
         SavingGuiTable model = new SavingGuiTable(builders, jTable1);
-        // pack now so we can use the table dimensions for the perferred size
+        // pack now so we can use the table dimensions for the preferred size
         validate();
         pack();
 
@@ -98,6 +98,7 @@ public class SavingGui extends javax.swing.JDialog implements PropertyChangeList
         Ended;
     }
 
+    @Override
     public void propertyChange(@Nonnull PropertyChangeEvent evt) {
         if (SavingGuiTask.ALL_DONE.equals(evt.getPropertyName())) {
             _eState = STATES.Ended;

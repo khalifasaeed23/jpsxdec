@@ -20,7 +20,16 @@
  */
 package org.jdesktop.swingx;
 
-import java.awt.*;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Container;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.Insets;
+import java.awt.Point;
+import java.awt.Rectangle;
+import java.awt.Window;
 import java.awt.event.InputEvent;
 import java.awt.event.MouseEvent;
 import java.io.IOException;
@@ -341,8 +350,12 @@ public final class SwingXUtilities {
      * 
      */
     public static void updateAllComponentTreeUIs() {
-        for (Frame frame : Frame.getFrames()) {
-            updateAllComponentTreeUIs(frame);
+//        for (Frame frame : Frame.getFrames()) {
+//            updateAllComponentTreeUIs(frame);
+//        }
+        // JW: updated to new 1.6 api - returns all windows, owned and ownerless
+        for (Window window: Window.getWindows()) {
+            SwingUtilities.updateComponentTreeUI(window);
         }
     }
 
@@ -472,6 +485,32 @@ public final class SwingXUtilities {
     }
 
     /**
+     * Obtains a {@code TranslucentRepaintManager} from the specified manager.
+     * If the current manager is a {@code TranslucentRepaintManager} or a
+     * {@code ForwardingRepaintManager} that contains a {@code
+     * TranslucentRepaintManager}, then the passed in manager is returned.
+     * Otherwise a new repaint manager is created and returned.
+     * 
+     * @param delegate
+     *            the current repaint manager
+     * @return a non-{@code null} {@code TranslucentRepaintManager}
+     * @throws NullPointerException if {@code delegate} is {@code null}
+     */
+    static RepaintManager getTranslucentRepaintManager(RepaintManager delegate) {
+        RepaintManager manager = delegate;
+        
+        while (manager != null && !manager.getClass().isAnnotationPresent(TranslucentRepaintManager.class)) {
+            if (manager instanceof ForwardingRepaintManager) {
+                manager = ((ForwardingRepaintManager) manager).getDelegateManager();
+            } else {
+                manager = null;
+            }
+        }
+        
+        return manager == null ? new ForwardingRepaintManager(delegate) : delegate;
+    }
+    
+    /**
      * Checks and returns whether the given property should be replaced
      * by the UI's default value. 
      * 
@@ -521,7 +560,7 @@ public final class SwingXUtilities {
     }
 
     
-    public static int loc2IndexFileList(JList list, Point point) {
+    public static int loc2IndexFileList(JList<Object> list, Point point) {
         int i = list.locationToIndex(point);
         if (i != -1) {
             Object localObject = list
@@ -537,10 +576,10 @@ public final class SwingXUtilities {
     }
 
     // PENDING JW: this isn't aware of sorting/filtering - fix!
-    private static boolean pointIsInActualBounds(JList list, int index,
+    private static boolean pointIsInActualBounds(JList<Object> list, int index,
             Point point) {
-        ListCellRenderer renderer = list.getCellRenderer();
-        ListModel model = list.getModel();
+        ListCellRenderer<? super Object> renderer = list.getCellRenderer();
+        ListModel<Object> model = list.getModel();
         Object element = model.getElementAt(index);
         Component comp = renderer.getListCellRendererComponent(list, element,
                 index, false, false);

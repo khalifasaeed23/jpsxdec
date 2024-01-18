@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2014-2019  Michael Sabin
+ * Copyright (C) 2014-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -47,30 +47,10 @@ import org.junit.*;
 
 
 public class DiscIndexerXaAudioTest {
-    
-    public DiscIndexerXaAudioTest() {
-    }
-    
-    @BeforeClass
-    public static void setUpClass() {
-    }
-    
-    @AfterClass
-    public static void tearDownClass() {
-    }
-    
-    @Before
-    public void setUp() {
-    }
-    
-    @After
-    public void tearDown() {
-    }
 
-    
     private static class DummyIdentifiedSector extends IdentifiedSector {
 
-        private static final int SECTOR_HEADER[] = {
+        private static final int[] SECTOR_HEADER = {
             0x00,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x00, // sync header
             0x00,0x00,0x00, // BCD block address
             2,   // mode 2
@@ -85,15 +65,15 @@ public class DiscIndexerXaAudioTest {
             0x88, // EOF | DATA
             0x00, // coding info
         };
-        
+
         private static CdSector makeDummySector() {
             byte[] abSectorBytes = new byte[CdSector.SECTOR_SIZE_2352_BIN];
             for (int i = 0; i < SECTOR_HEADER.length; i++) {
-                abSectorBytes[i] = (byte)SECTOR_HEADER[i];                
+                abSectorBytes[i] = (byte)SECTOR_HEADER[i];
             }
             return new CdSector2352(0, abSectorBytes, 0, 0);
         }
-                
+
         public DummyIdentifiedSector() {
             super(makeDummySector());
         }
@@ -110,14 +90,14 @@ public class DiscIndexerXaAudioTest {
             return new ByteArrayFPIS(new byte[0]);
         }
     }
-    
-    
+
+
     @Test
     public void channel255() {
         DiscIndexerXaAudio xaIndexer = new DiscIndexerXaAudio(DebugLogger.Log);
         // just testing that nothing terrible happens
         DummyIdentifiedSector s = new DummyIdentifiedSector();
-        xaIndexer.feedXaSector(s.getCdSector(), null, DebugLogger.Log);
+        xaIndexer.feedSector(s, DebugLogger.Log);
     }
-    
+
 }

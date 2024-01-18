@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2013-2019  Michael Sabin
+ * Copyright (C) 2013-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -55,7 +55,7 @@ class Component {
     /** Track DC values while writing the JPEG. */
     public int PreviousDC;
 
-    public Component(int iComponentIndex, int iQuantizationTableIndex, 
+    public Component(int iComponentIndex, int iQuantizationTableIndex,
                      int iHSampling, int iVSampling,
                      int iDcHuffTableIndex, int iAcHuffTableIndex,
                      int iMcuWidth, int iMcuHeight)

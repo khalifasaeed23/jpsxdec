@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -48,9 +48,9 @@ public interface ISquareAudioSector extends IIdentifiedSector {
     int getSampleFramesPerSecond();
     /** Number of SPU sound units in the sector. */
     int getSoundUnitCount();
-    
+
     boolean isLeftChannel();
-        
+
     /** Start offset in the CD sector where the audio data begins. */
     int getAudioDataStartOffset();
     /** Frame number that this sector belongs to. */

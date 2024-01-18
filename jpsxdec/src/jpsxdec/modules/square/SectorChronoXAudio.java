@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -50,7 +50,7 @@ import jpsxdec.util.ByteArrayFPIS;
 /** Audio sectors used in Chrono Cross movies. Nearly identical to FF9
  *  audio sectors. */
 public class SectorChronoXAudio extends IdentifiedSector implements ISquareAudioSector {
-    
+
     private static final Logger LOG = Logger.getLogger(SectorChronoXAudio.class.getName());
 
     // .. Static stuff .....................................................
@@ -63,7 +63,7 @@ public class SectorChronoXAudio extends IdentifiedSector implements ISquareAudio
     public static final long AUDIO_CHUNK_MAGIC3 = 0x01000160L;
     /** Used on disc 2. */
     public static final long AUDIO_CHUNK_MAGIC4 = 0x01010160L;
-    
+
     public static final int FRAME_AUDIO_CHUNK_HEADER_SIZE = 208;
 
     // .. Instance .........................................................
@@ -85,12 +85,13 @@ public class SectorChronoXAudio extends IdentifiedSector implements ISquareAudio
 
         if (cdSector.isCdAudioSector()) return;
 
-        // since all Chrono Cross movie sectors are in Mode 2 Form 1, we can 
+        // since all Chrono Cross movie sectors are in Mode 2 Form 1, we can
         // still decode the movie even if there is no raw sector header.
-        if (!subModeMaskMatch(SubMode.MASK_DATA | SubMode.MASK_FORM, SubMode.MASK_DATA))
+        // DATA must be set, and FORM must not be set
+        if (subModeExistsAndMaskDoesNotEqual(SubMode.MASK_DATA | SubMode.MASK_FORM, SubMode.MASK_DATA))
             return;
 
-        // make sure the magic nubmer is correct
+        // make sure the magic number is correct
         long lngMagic = cdSector.readUInt32LE(0);
         if (lngMagic != AUDIO_CHUNK_MAGIC1 &&
             lngMagic != AUDIO_CHUNK_MAGIC2 &&
@@ -116,26 +117,31 @@ public class SectorChronoXAudio extends IdentifiedSector implements ISquareAudio
                                    new Object[]{_akaoStruct.BytesOfData, cdSector});
         }
         _iSoundUnitCount = (int) (_akaoStruct.BytesOfData / SpuAdpcmSoundUnit.SIZEOF_SOUND_UNIT);
-        
+
         setProbability(100);
     }
 
+    @Override
     public @Nonnull String getTypeName() {
         return "CX Audio";
     }
 
+    @Override
     public int getSoundUnitCount() {
         return _iSoundUnitCount;
     }
 
+    @Override
     public int getHeaderFrameNumber() {
         return _iHeaderFrameNumber;
     }
-    
+
+    @Override
     public int getSampleFramesPerSecond() {
         return 44100;
     }
 
+    @Override
     public boolean isLeftChannel() {
         switch (_iAudioChunkNumber) {
             case 0: return true;
@@ -144,14 +150,17 @@ public class SectorChronoXAudio extends IdentifiedSector implements ISquareAudio
         }
     }
 
+    @Override
     public int getAudioDataStartOffset() {
         return FRAME_AUDIO_CHUNK_HEADER_SIZE;
     }
 
+    @Override
     public int getAudioDataSize() {
         return (int)_akaoStruct.BytesOfData;
     }
 
+    @Override
     public @Nonnull ByteArrayFPIS getIdentifiedUserDataStream() {
         return new ByteArrayFPIS(getCdSector().getCdUserDataStream(),
                 FRAME_AUDIO_CHUNK_HEADER_SIZE, getAudioDataSize());

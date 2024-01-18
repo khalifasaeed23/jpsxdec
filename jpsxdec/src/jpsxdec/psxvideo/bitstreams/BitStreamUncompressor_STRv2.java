@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -41,10 +41,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
-import jpsxdec.i18n.I;
-import jpsxdec.i18n.exception.LocalizedIncompatibleException;
 import jpsxdec.i18n.log.ILocalizedLogger;
-import jpsxdec.psxvideo.encode.MacroBlockEncoder;
 import jpsxdec.psxvideo.encode.MdecEncoder;
 import jpsxdec.psxvideo.mdec.Calc;
 import jpsxdec.psxvideo.mdec.MdecBlock;
@@ -60,15 +57,16 @@ import jpsxdec.util.Misc;
 
 /** Bitstream parser/decoder for the very common "version 2" demuxed video
  * frames, used by most games. */
-public class BitStreamUncompressor_STRv2 extends BitStreamUncompressor {
+public class BitStreamUncompressor_STRv2 extends BitStreamUncompressor implements IBitStreamWith1QuantizationScale {
 
     private static final Logger LOG = Logger.getLogger(BitStreamUncompressor_STRv2.class.getName());
 
     public static class StrV2Header extends StrHeader {
-        public StrV2Header(byte[] abFrameData, int iDataSize) {
+        public StrV2Header(@Nonnull byte[] abFrameData, int iDataSize) {
             super(abFrameData, iDataSize, 2);
         }
 
+        @Override
         public @Nonnull BitStreamUncompressor_STRv2 makeNew(@Nonnull byte[] abBitstream, int iBitstreamSize)
                 throws BinaryDataNotRecognized
         {
@@ -89,7 +87,7 @@ public class BitStreamUncompressor_STRv2 extends BitStreamUncompressor {
             throw new BinaryDataNotRecognized();
         return bsu;
     }
-    
+
     static @CheckForNull BitStreamUncompressor_STRv2 makeV2NoThrow(@Nonnull byte[] abBitstream, int iDataSize)
     {
         StrV2Header header = new StrV2Header(abBitstream, iDataSize);
@@ -100,17 +98,28 @@ public class BitStreamUncompressor_STRv2 extends BitStreamUncompressor {
         return new BitStreamUncompressor_STRv2(header, bitReader);
     }
 
-    /** 11 bits found at the end of STR v2 movies.
-     * <pre>011 111 111 10</pre> */
-    private final static String END_OF_FRAME_EXTRA_BITS = "01111111110";
+    /** 10 bits found at the end of STR v2 movies.
+     * <pre>0111111111</pre> */
+    private final static String END_OF_FRAME_EXTRA_BITS = "0111111111";
+    private static final int PADDING_BITS_LENGTH = END_OF_FRAME_EXTRA_BITS.length();
+    /** 10 bits found at the end of STR v2 movies.
+     * <pre>0111111111</pre> */
+    private static final int b0111111111 = 0x1ff;
 
-    /** 11 bits found at the end of STR v2 movies.
-     * <pre>011 111 111 10</pre> */
-    private static final int b01111111110 = 0x3FE;
-
+    public static final IByteOrder LITTLE_ENDIAN_SHORT_ORDER = new IByteOrder() {
+        @Override
+        public int getByteOffset(int iByteIndex) {
+            // flip the last bit so bytes are read in 16-bit little-endian
+            return iByteIndex ^ 1;
+        }
+        @Override
+        public int getPaddingByteAlign() {
+            return 4;
+        }
+    };
 
     public static @Nonnull ArrayBitReader makeStrBitReader(@Nonnull byte[] abBitstream, int iDataSize) {
-        return new ArrayBitReader(abBitstream, iDataSize, true, 8);
+        return new ArrayBitReader(abBitstream, LITTLE_ENDIAN_SHORT_ORDER, StrHeader.SIZEOF, iDataSize);
     }
 
     @Nonnull
@@ -119,20 +128,26 @@ public class BitStreamUncompressor_STRv2 extends BitStreamUncompressor {
     private BitStreamUncompressor_STRv2(@Nonnull StrV2Header header,
                                         @Nonnull ArrayBitReader bitReader)
     {
-        super(bitReader, ZeroRunLengthAcLookup_STR.AC_VARIABLE_LENGTH_CODES_MPEG1, 
-              new QuantizationDc_STRv12(header.getQuantizationScale()), new AcEscapeCode_STR(),
-              new FrameEndPaddingBits_STRv2());
+        super(bitReader, ZeroRunLengthAcLookup_STR.AC_VARIABLE_LENGTH_CODES_MPEG1,
+              new QuantizationDcReader_STRv12(header.getQuantizationScale()),
+              AC_ESCAPE_CODE_STR, FRAME_END_PADDING_BITS_STRV2);
         _header = header;
     }
 
-    public static class QuantizationDc_STRv12 implements IQuantizationDc {
+    @Override
+    public int getQuantizationScale() {
+        return _header.getQuantizationScale();
+    }
+
+    public static class QuantizationDcReader_STRv12 implements IQuantizationDcReader {
 
         private final int _iFrameQuantizationScale;
 
-        public QuantizationDc_STRv12(int iFrameQuantizationScale) {
+        public QuantizationDcReader_STRv12(int iFrameQuantizationScale) {
             _iFrameQuantizationScale = iFrameQuantizationScale;
         }
 
+        @Override
         public void readQuantizationScaleAndDc(@Nonnull ArrayBitReader bitReader, @Nonnull MdecContext context, @Nonnull MdecCode code)
                 throws MdecException.ReadCorruption, MdecException.EndOfStream
         {
@@ -144,6 +159,7 @@ public class BitStreamUncompressor_STRv2 extends BitStreamUncompressor {
     }
 
     private static class AcEscapeCode_STR implements IAcEscapeCode {
+        @Override
         public void readAcEscapeCode(@Nonnull ArrayBitReader bitReader, @Nonnull MdecCode code)
                 throws MdecException.EndOfStream
         {
@@ -158,10 +174,15 @@ public class BitStreamUncompressor_STRv2 extends BitStreamUncompressor {
 
     private static class FrameEndPaddingBits_STRv2 implements IFrameEndPaddingBits {
         @Override
-        public void skipPaddingBits(@Nonnull ArrayBitReader bitReader) throws MdecException.EndOfStream {
-            int iPaddingBits = bitReader.readUnsignedBits(11);
-            if (iPaddingBits != b01111111110)
-                LOG.log(Level.WARNING, "Incorrect padding bits {0}", Misc.bitsToString(iPaddingBits, 11));
+        public boolean skipPaddingBits(@Nonnull ArrayBitReader bitReader) throws MdecException.EndOfStream {
+            int iPaddingBits = bitReader.readUnsignedBits(PADDING_BITS_LENGTH);
+            if (iPaddingBits != b0111111111) {
+                LOG.log(Level.WARNING, "Incorrect padding bits {0} should be {1}",
+                        new Object[]{Misc.bitsToString(iPaddingBits, PADDING_BITS_LENGTH),
+                                     Misc.bitsToString(b0111111111, PADDING_BITS_LENGTH)});
+                return false;
+            }
+            return true;
         }
     }
     public static final IFrameEndPaddingBits FRAME_END_PADDING_BITS_STRV2 = new FrameEndPaddingBits_STRv2();
@@ -173,7 +194,7 @@ public class BitStreamUncompressor_STRv2 extends BitStreamUncompressor {
 
     @Override
     public @Nonnull BitStreamCompressor_STRv2 makeCompressor() {
-        return new BitStreamCompressor_STRv2(_context.getTotalMacroBlocksRead());
+        return new BitStreamCompressor_STRv2(_context.getTotalMacroBlocksRead(), getQuantizationScale());
     }
 
     /*########################################################################*/
@@ -182,160 +203,94 @@ public class BitStreamUncompressor_STRv2 extends BitStreamUncompressor {
 
 
 
-    public static class BitStreamCompressor_STRv2 implements BitStreamCompressor {
+    public static class BitStreamCompressor_STRv2 implements BitStreamCompressor, CommonBitStreamCompressing.BitStringEncoder {
 
         private final int _iMacroBlockCount;
-        private int _iQscale;
-        private int _iMdecCodeCount;
+        private final int _iOriginalQscale;
+        private final int _iHeaderVersion;
+        @Nonnull
+        private final String _sTrailingBits;
+        @Nonnull
+        private final IByteOrder _byteOrder;
 
-        public BitStreamCompressor_STRv2(int iMacroBlockCount) {
-            _iMacroBlockCount = iMacroBlockCount;
+        private int _iQscale = -1;
+
+        public BitStreamCompressor_STRv2(int iMacroBlockCount, int iOriginalQscale) {
+            this(iMacroBlockCount, iOriginalQscale, 2, END_OF_FRAME_EXTRA_BITS, LITTLE_ENDIAN_SHORT_ORDER);
         }
 
-        public @CheckForNull byte[] compressFull(@Nonnull byte[] abOriginal,
-                                                 @Nonnull String sFrameDescription,
-                                                 @Nonnull MdecEncoder encoder, 
-                                                 @Nonnull ILocalizedLogger log)
-                throws MdecException.EndOfStream, MdecException.ReadCorruption
+        protected BitStreamCompressor_STRv2(int iMacroBlockCount, int iOriginalQscale, int iHeaderVersion) {
+            this(iMacroBlockCount, iOriginalQscale, iHeaderVersion, END_OF_FRAME_EXTRA_BITS, LITTLE_ENDIAN_SHORT_ORDER);
+        }
+
+        protected BitStreamCompressor_STRv2(int iMacroBlockCount, int iOriginalQscale, @Nonnull IByteOrder byteOrder) {
+            this(iMacroBlockCount, iOriginalQscale, 2, END_OF_FRAME_EXTRA_BITS, byteOrder);
+        }
+
+        protected BitStreamCompressor_STRv2(int iMacroBlockCount, int iOriginalQscale, int iHeaderVersion,
+                                            @Nonnull String sTrailingBits, @Nonnull IByteOrder byteOrder)
         {
-            for (int iQscale = 1; iQscale < 64; iQscale++) {
-                log.log(Level.INFO, I.TRYING_QSCALE(iQscale));
-
-                int[] aiNewQscale = { iQscale, iQscale, iQscale,
-                                      iQscale, iQscale, iQscale };
-
-                for (MacroBlockEncoder macblk : encoder) {
-                    macblk.setToFullEncode(aiNewQscale);
-                }
-
-                byte[] abNewDemux;
-                try {
-                    abNewDemux = compress(encoder.getStream());
-                } catch (IncompatibleException ex) {
-                    throw new RuntimeException("The encoder should be compatible here", ex);
-                } catch (MdecException.TooMuchEnergy ex) {
-                    throw new RuntimeException("This should not happen with STRv2", ex);
-                }
-                if (abNewDemux.length <= abOriginal.length) {
-                    log.log(Level.INFO, I.NEW_FRAME_FITS(sFrameDescription, abNewDemux.length, abOriginal.length));
-                    return abNewDemux;
-                } else {
-                    log.log(Level.INFO, I.NEW_FRAME_DOES_NOT_FIT(sFrameDescription, abNewDemux.length, abOriginal.length));
-                }
-            }
-            return null;
+            _iMacroBlockCount = iMacroBlockCount;
+            _iOriginalQscale = iOriginalQscale;
+            _iHeaderVersion = iHeaderVersion;
+            _sTrailingBits = sTrailingBits;
+            _byteOrder = byteOrder;
         }
 
-        public @CheckForNull byte[] compressPartial(@Nonnull byte[] abOriginal,
+        @Override
+        public @CheckForNull byte[] compressFull(int iMaxSize,
+                                                 @Nonnull String sFrameDescription,
+                                                 @Nonnull MdecEncoder encoder,
+                                                 @Nonnull ILocalizedLogger log)
+                throws IncompatibleException,
+                       MdecException.EndOfStream, MdecException.ReadCorruption
+        {
+            return CommonBitStreamCompressing.singleQscaleCompressFull(iMaxSize, sFrameDescription, encoder, this, log);
+        }
+
+        @Override
+        public @CheckForNull byte[] compressPartial(int iMaxSize,
                                                     @Nonnull String sFrameDescription,
                                                     @Nonnull MdecEncoder encoder,
                                                     @Nonnull ILocalizedLogger log)
-                throws LocalizedIncompatibleException, MdecException.EndOfStream, MdecException.ReadCorruption
+                throws IncompatibleException,
+                       MdecException.EndOfStream, MdecException.ReadCorruption
         {
-            final int iFrameQscale = getFrameQscale(abOriginal);
-            int[] aiOriginalQscale = { iFrameQscale, iFrameQscale, iFrameQscale,
-                                       iFrameQscale, iFrameQscale, iFrameQscale };
-            
-            for (int iNewQscale = iFrameQscale; iNewQscale < 64; iNewQscale++) {
-                log.log(Level.INFO, I.TRYING_QSCALE(iNewQscale));
-
-                int[] aiNewQscale = { iNewQscale, iNewQscale, iNewQscale,
-                                      iNewQscale, iNewQscale, iNewQscale };
-
-                for (MacroBlockEncoder macblk : encoder) {
-                    macblk.setToPartialEncode(aiOriginalQscale, aiNewQscale);
-                }
-
-                byte[] abNewDemux;
-                try {
-                    abNewDemux = compress(encoder.getStream());
-                } catch (IncompatibleException ex) {
-                    throw new RuntimeException("The encoder should be compatible here", ex);
-                } catch (MdecException.TooMuchEnergy ex) {
-                    throw new RuntimeException("This should not happen with STRv2", ex);
-                }
-                if (abNewDemux.length <= abOriginal.length) {
-                    log.log(Level.INFO, I.NEW_FRAME_FITS(sFrameDescription, abNewDemux.length, abOriginal.length));
-                    return abNewDemux;
-                } else {
-                    log.log(Level.INFO, I.NEW_FRAME_DOES_NOT_FIT(sFrameDescription, abNewDemux.length, abOriginal.length));
-                }
-            }
-            return null;
+            return CommonBitStreamCompressing.singleQscaleCompressPartial(iMaxSize, sFrameDescription, encoder, this, _iOriginalQscale, log);
         }
 
+        @Override
         public @Nonnull byte[] compress(@Nonnull MdecInputStream inStream)
-                throws IncompatibleException, MdecException.EndOfStream,
-                       MdecException.ReadCorruption, MdecException.TooMuchEnergy
+                throws IncompatibleException,
+                       MdecException.EndOfStream, MdecException.ReadCorruption, MdecException.TooMuchEnergy
         {
-            _iMdecCodeCount = -1;
             _iQscale = -1; // qscale will be set on first block read
 
             BitStreamWriter bitStream = new BitStreamWriter();
-            bitStream.setLittleEndian(isBitstreamLittleEndian());
 
-            final MdecCode code = new MdecCode();
-            MdecContext context = new MdecContext();
+            int iMdecCodeCount = CommonBitStreamCompressing.compress(bitStream, inStream, this, _iMacroBlockCount);
 
-            while (context.getTotalMacroBlocksRead() < _iMacroBlockCount) {
-                String sBitsToWrite;
-                boolean blnEod = inStream.readMdecCode(code);
-                if (!code.isValid())
-                    throw new MdecException.ReadCorruption("Invalid MDEC code " + code);
-                if (blnEod) {
-                    sBitsToWrite = ZeroRunLengthAcLookup_STR.END_OF_BLOCK.getBitString();
-                    context.nextCodeEndBlock();
-                } else {
-                    if (context.atStartOfBlock()) {
-                        setBlockQscale(context.getCurrentBlock(), code.getTop6Bits());
-                        sBitsToWrite = encodeDC(code.getBottom10Bits(), context.getCurrentBlock());
-                    } else {
-                        sBitsToWrite = encodeAC(code);
-                    }
-                    context.nextCode();
-                }
-                if (BitStreamDebugging.DEBUG)
-                    System.out.println("Converting " + code.toString() + " to " + sBitsToWrite + " at " + bitStream.getCurrentWordPosition());
-                bitStream.write(sBitsToWrite);
-            }
+            bitStream.write(_sTrailingBits);
 
-            if (!context.atStartOfBlock())
-                throw new IllegalStateException("Ended compressing in the middle of a macroblock.");
+            byte[] abBitstream = bitStream.toByteArray(_byteOrder);
+            byte[] abHeader = createHeader(iMdecCodeCount);
 
-            addTrailingBits(bitStream);
-            byte[] abBitstream = bitStream.toByteArray();
-            byte[] abHeader = createHeader(context.getTotalMdecCodesRead());
-            byte[] abReturn = new byte[abHeader.length + abBitstream.length];
-            System.arraycopy(abHeader, 0, abReturn, 0, abHeader.length);
-            System.arraycopy(abBitstream, 0, abReturn, abHeader.length, abBitstream.length);
+            byte[] abReturn = CommonBitStreamCompressing.joinByteArrays(abHeader, abBitstream);
 
-            _iMdecCodeCount = context.getTotalMdecCodesRead();
             return abReturn;
         }
 
-        public int getMdecCodesFromLastCompress() {
-            return _iMdecCodeCount;
-        }
-
-        protected boolean isBitstreamLittleEndian() {
-            return true;
-        }
-
-        protected void addTrailingBits(@Nonnull BitStreamWriter bitStream) {
-            bitStream.write(END_OF_FRAME_EXTRA_BITS);
-        }
-
-        /** Sets the quantization scale for the current block being encoded.
-         * Performs any necessary preparations for encoding the block.
-         * Ensures the quantization scale is compatible with the bitstream.
-         * Caller will ensure parameters are valid. */
-        protected void setBlockQscale(@Nonnull MdecBlock block, int iQscale) throws IncompatibleException {
+        @Override
+        final public @Nonnull String encodeQscaleDc(@Nonnull MdecCode code, @Nonnull MdecBlock block)
+                throws MdecException.TooMuchEnergy, IncompatibleException
+        {
+            int iQscale = code.getTop6Bits();
             if (_iQscale < 0)
                 _iQscale = iQscale;
             else if (_iQscale != iQscale)
-                throw new IncompatibleException(String.format(
-                        "Inconsistent qscale scale: current %d != new %d",
-                        _iQscale, iQscale));
+                throw new IncompatibleException(String.format("Inconsistent qscale value: current %d != new %d", _iQscale, iQscale));
+
+            return encodeDC(code.getBottom10Bits(), block);
         }
 
         protected @Nonnull String encodeDC(int iDC, @Nonnull MdecBlock block) throws MdecException.TooMuchEnergy {
@@ -345,54 +300,30 @@ public class BitStreamUncompressor_STRv2 extends BitStreamUncompressor {
             return Misc.bitsToString(iDC, 10);
         }
 
-        private String encodeAC(@Nonnull MdecCode code) 
-                throws MdecException.TooMuchEnergy
-        {
-            if (!code.isValid())
-                throw new IllegalArgumentException("Invalid MDEC code " + code);
+        @Override
+        final public @Nonnull String encode0RlcAc(@Nonnull MdecCode code) {
+            ZeroRunLengthAc match = ZeroRunLengthAcLookup_STR.AC_VARIABLE_LENGTH_CODES_MPEG1.lookup(code);
 
-            for (ZeroRunLengthAc vlc : getAcVaribleLengthCodeList()) {
-                if (vlc.equalsMdec(code))
-                    return vlc.getBitString();
-            }
+            if (match != null)
+                return match.getBitString();
+
             // not a pre-defined code
-            return encodeAcEscape(code);
-        }
-
-        protected @Nonnull ZeroRunLengthAcLookup getAcVaribleLengthCodeList() {
-            return ZeroRunLengthAcLookup_STR.AC_VARIABLE_LENGTH_CODES_MPEG1;
-        }
-
-        protected @Nonnull String encodeAcEscape(@Nonnull MdecCode code)
-                throws MdecException.TooMuchEnergy
-        {
-            if (!code.isValid())
-                throw new IllegalArgumentException("Invalid MDEC code " + code);
-
             return ZeroRunLengthAcLookup_STR.ESCAPE_CODE.getBitString() +
                     Misc.bitsToString(code.getTop6Bits(), 6) +
                     Misc.bitsToString(code.getBottom10Bits(), 10);
         }
 
-        protected @Nonnull byte[] createHeader(int iMdecCodeCount) {
-            byte[] ab = new byte[8];
+        private @Nonnull byte[] createHeader(int iMdecCodeCount) {
+            byte[] ab = new byte[StrHeader.SIZEOF];
 
             IO.writeInt16LE(ab, 0, Calc.calculateHalfCeiling32(iMdecCodeCount));
             IO.writeInt16LE(ab, 2, (short)0x3800);
             IO.writeInt16LE(ab, 4, (short)_iQscale);
-            IO.writeInt16LE(ab, 6, (short)getHeaderVersion());
+            IO.writeInt16LE(ab, 6, (short)_iHeaderVersion);
 
             return ab;
         }
 
-        protected int getHeaderVersion() { return 2; }
-        
-        protected int getFrameQscale(@Nonnull byte[] abFrameData) throws LocalizedIncompatibleException {
-            StrV2Header header = new StrV2Header(abFrameData, abFrameData.length);
-            if (!header.isValid())
-                throw new LocalizedIncompatibleException(I.FRAME_IS_NOT_BITSTREAM_FORMAT("STRv2"));
-            return header.getQuantizationScale();
-        }
     }
 
 }

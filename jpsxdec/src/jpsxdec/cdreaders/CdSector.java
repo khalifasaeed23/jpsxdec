@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -46,7 +46,7 @@ import jpsxdec.util.IO;
 
 /** Represents a single sector on a CD. */
 public abstract class CdSector {
-    
+
     /** Normal iso sector data size: 2048. */
     public final static int SECTOR_SIZE_2048_ISO            = 2048;
     /** Raw sector without sync header: 2336. */
@@ -57,7 +57,7 @@ public abstract class CdSector {
     public final static int SECTOR_SIZE_2448_BIN_SUBCHANNEL = 2448;
 
 
-    /** Data sector payload size for and Mode 2 Form 1: 2048. */
+    /** Data sector payload size for Mode 1 and Mode 2 Form 1: 2048. */
     public final static int SECTOR_USER_DATA_SIZE_MODE1_MODE2FORM1 = 2048;
     /** Payload size for and Mode 2 Form 2 (usually XA audio): 2324. */
     public final static int SECTOR_USER_DATA_SIZE_MODE2FORM2       = 2324;
@@ -89,14 +89,14 @@ public abstract class CdSector {
     /** Offset in {@link #_abSectorBytes} where this sector begins. */
     private final int _iByteStartOffset;
     /** Byte offset of this sector in the source file. */
-    private final long _lngFilePointer;
+    private final int _iFilePointer;
 
-    public CdSector(int iSectorIndex, byte[] abSectorBytes, int iByteStartOffset,
-                    long lngFilePointer) {
+    public CdSector(int iSectorIndex, @Nonnull byte[] abSectorBytes, int iByteStartOffset,
+                    int iFilePointer) {
         _iSectorIndex = iSectorIndex;
         _abSectorBytes = abSectorBytes;
         _iByteStartOffset = iByteStartOffset;
-        _lngFilePointer = lngFilePointer;
+        _iFilePointer = iFilePointer;
     }
 
     // .........................................................................
@@ -111,7 +111,7 @@ public abstract class CdSector {
 
     abstract public @CheckForNull CdSectorHeader getHeader();
     abstract public @CheckForNull CdSectorXaSubHeader getSubHeader();
-    
+
     abstract public boolean hasHeaderErrors();
     abstract public int getErrorCount();
 
@@ -129,8 +129,8 @@ public abstract class CdSector {
     /** Returns the actual offset in bytes from the start of the file/CD
      * to the start of the sector userdata. */
     //[implements IGetFilePointer]
-    final public long getUserDataFilePointer() {
-        return _lngFilePointer + getHeaderDataSize();
+    final public int getUserDataFilePointer() {
+        return _iFilePointer + getHeaderDataSize();
     }
 
     /** Returns copy of the 'user data' portion of the sector. */
@@ -162,13 +162,20 @@ public abstract class CdSector {
 
     /** Returns an InputStream of the 'user data' portion of the sector. */
     final public @Nonnull ByteArrayFPIS getCdUserDataStream() {
-        int iStart = _iByteStartOffset + getHeaderDataSize();
-        return new ByteArrayFPIS(_abSectorBytes, iStart, getCdUserDataSize(), getUserDataFilePointer());
+        return getCdUserDataStream(0);
+    }
+
+    /** Returns an InputStream of the 'user data' portion of the sector. */
+    final public @Nonnull ByteArrayFPIS getCdUserDataStream(int iStartOffset) {
+        if (iStartOffset < 0 || iStartOffset > getCdUserDataSize())
+            throw new IllegalArgumentException();
+        int iStart = _iByteStartOffset + getHeaderDataSize() + iStartOffset;
+        return new ByteArrayFPIS(_abSectorBytes, iStart, getCdUserDataSize() - iStartOffset, getUserDataFilePointer());
     }
 
     // .........................................................................
     // readers
-    
+
     final public byte readUserDataByte(int i) {
         checkIndex(i);
         return _abSectorBytes[_iByteStartOffset + getHeaderDataSize() + i];
@@ -208,14 +215,14 @@ public abstract class CdSector {
         checkIndex(i);
         return IO.readSInt32BE(_abSectorBytes, _iByteStartOffset + getHeaderDataSize() + i);
     }
-    
+
     final public long readSInt64BE(int i) {
         checkIndex(i);
         return IO.readSInt64BE(_abSectorBytes, _iByteStartOffset + getHeaderDataSize() + i);
     }
 
-    /** Helper function to ensure index is within the size of the sector data. 
-     * @throws IndexOutOfBoundsException If index is out of bounds of 
+    /** Helper function to ensure index is within the size of the sector data.
+     * @throws IndexOutOfBoundsException If index is out of bounds of
      *                                   the sector data. */
     private void checkIndex(int i) {
         if (i < 0 || i >= getCdUserDataSize())

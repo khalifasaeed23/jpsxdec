@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2012-2019  Michael Sabin
+ * Copyright (C) 2012-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -42,20 +42,20 @@ import java.util.List;
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 import javax.sound.sampled.AudioFormat;
-import jpsxdec.cdreaders.CdFileSectorReader;
+import jpsxdec.cdreaders.ICdSectorReader;
+import jpsxdec.discitems.Dimensions;
 import jpsxdec.discitems.SerializedDiscItem;
 import jpsxdec.i18n.exception.LocalizedDeserializationFail;
 import jpsxdec.i18n.exception.LoggedFailure;
 import jpsxdec.i18n.log.ILocalizedLogger;
 import jpsxdec.modules.SectorClaimSystem;
-import jpsxdec.modules.sharedaudio.DecodedAudioPacket;
-import jpsxdec.modules.video.Dimensions;
+import jpsxdec.modules.audio.DecodedAudioPacket;
 import jpsxdec.modules.video.IDemuxedFrame;
+import jpsxdec.modules.video.ISectorClaimToFrameAndAudio;
 import jpsxdec.modules.video.framenumber.FrameNumber;
 import jpsxdec.modules.video.framenumber.HeaderFrameNumber;
 import jpsxdec.modules.video.framenumber.IFrameNumberFormatterWithHeader;
 import jpsxdec.modules.video.framenumber.IndexSectorFrameNumber;
-import jpsxdec.modules.video.packetbased.SectorClaimToAudioAndFrame;
 import jpsxdec.modules.video.packetbased.DiscItemPacketBasedVideoStream;
 import jpsxdec.util.Fraction;
 
@@ -63,42 +63,32 @@ import jpsxdec.util.Fraction;
 public class DiscItemCrusader extends DiscItemPacketBasedVideoStream {
 
     public static final String TYPE_ID = "Crusader";
-    private static final Fraction SECTORS_PER_FRAME = new Fraction(10);
-    private static final int FPS = 15;
 
     @Nonnull
     private final HeaderFrameNumber.Format _headerFrameNumberFormat;
 
-    private static final String INITIAL_PRES_SECTOR_KEY = "Initial presentation sector";
-    /** Should normally be 0 unless the first several sectors of the video are missing for some reason. */
-    private final int _iRelativeInitialFramePresentationSector;
-
-    public DiscItemCrusader(@Nonnull CdFileSectorReader cd,
+    public DiscItemCrusader(@Nonnull ICdSectorReader cd,
                             int iStartSector, int iEndSector,
                             @Nonnull Dimensions dim,
                             @Nonnull IndexSectorFrameNumber.Format sectorIndexFrameNumberFormat,
                             @Nonnull HeaderFrameNumber.Format headerFrameNumberFormat,
-                            int iInitialPresentationSector,
                             int iSoundUnitCount)
     {
         super(cd, iStartSector, iEndSector, dim, sectorIndexFrameNumberFormat, iSoundUnitCount);
         _headerFrameNumberFormat = headerFrameNumberFormat;
-        _iRelativeInitialFramePresentationSector = iInitialPresentationSector;
     }
-    
-    public DiscItemCrusader(@Nonnull CdFileSectorReader cd, @Nonnull SerializedDiscItem fields)
+
+    public DiscItemCrusader(@Nonnull ICdSectorReader cd, @Nonnull SerializedDiscItem fields)
             throws LocalizedDeserializationFail
     {
         super(cd, fields);
         _headerFrameNumberFormat = new HeaderFrameNumber.Format(fields);
-        _iRelativeInitialFramePresentationSector = fields.getInt(INITIAL_PRES_SECTOR_KEY);
     }
 
     @Override
     public @Nonnull SerializedDiscItem serialize() {
         SerializedDiscItem serial = super.serialize();
         _headerFrameNumberFormat.serialize(serial);
-        serial.addNumber(INITIAL_PRES_SECTOR_KEY, _iRelativeInitialFramePresentationSector);
         return serial;
     }
 
@@ -118,7 +108,7 @@ public class DiscItemCrusader extends DiscItemPacketBasedVideoStream {
     }
 
     @Override
-    public FrameNumber getEndFrame() {
+    public @Nonnull FrameNumber getEndFrame() {
         return _headerFrameNumberFormat.getEndFrame(_indexSectorFrameNumberFormat);
     }
 
@@ -128,121 +118,102 @@ public class DiscItemCrusader extends DiscItemPacketBasedVideoStream {
     }
 
     @Override
-    protected double getPacketBasedFpsInterestingDescription() {
-        return FPS;
-    }
-    
-    @Override
-    public @Nonnull Fraction getSectorsPerFrame() {
-        return SECTORS_PER_FRAME;
+    public @Nonnull Fraction getFramesPerSecond() {
+        return new Fraction(CrusaderPacket.FRAMES_PER_SECOND);
     }
 
     @Override
     public int getAudioSampleFramesPerSecond() {
-        return CrusaderPacketToFrameAndAudio.CRUSADER_SAMPLE_FRAMES_PER_SECOND;
+        return CrusaderPacket.CRUSADER_SAMPLE_FRAMES_PER_SECOND;
     }
 
     @Override
-    public double getApproxDuration() {
-        return getFrameCount() / (double)FPS;
+    public @Nonnull ISectorClaimToFrameAndAudio makeVideoAudioStream(double dblVolume) {
+        return new Stream(dblVolume, _headerFrameNumberFormat.makeFormatter(_indexSectorFrameNumberFormat));
     }
 
-    @Override
-    public @Nonnull SectorClaimToAudioAndFrame makeAudioVideoDemuxer(double dblVolume) {
-        return new Demuxer(dblVolume, _headerFrameNumberFormat.makeFormatter(_indexSectorFrameNumberFormat));
-    }
-
-    /* SectorClaimSystem -> CrusaderSectorToCrusaderPacket -> CrusaderPacketToFrameAndAudio -> IDemuxedFrame
-     *                                                                                      -> DecodedAudioPacket
-     */
-    public class Demuxer extends SectorClaimToAudioAndFrame
-                         implements SectorClaimToSectorCrusader.Listener,
-                                    CrusaderPacketToFrameAndAudio.FrameListener
-    {
+    public class Stream implements ISectorClaimToFrameAndAudio, CrusaderPacketToFrameAndAudio.FrameListener {
 
         private final double _dblVolume;
         @Nonnull
         private final IFrameNumberFormatterWithHeader _frameNumberFormatter;
-        @CheckForNull
-        private IDemuxedFrame.Listener _listener;
         @Nonnull
         private final CrusaderPacketToFrameAndAudio _cp2a;
         @Nonnull
         private final CrusaderSectorToCrusaderPacket _cs2cp;
 
-        public Demuxer(double dblVolume,
-                       @Nonnull IFrameNumberFormatterWithHeader frameNumberFormatter)
+        @CheckForNull
+        private IDemuxedFrame.Listener _listener;
+
+        public Stream(double dblVolume,
+                      @Nonnull IFrameNumberFormatterWithHeader frameNumberFormatter)
         {
             _dblVolume = dblVolume;
             _frameNumberFormatter = frameNumberFormatter;
-            int iAbsoluteInitialFramePresentationSector = _iRelativeInitialFramePresentationSector +
-                                                          DiscItemCrusader.this.getAbsolutePresentationStartSector();
             _cp2a = new CrusaderPacketToFrameAndAudio(
-                    dblVolume, iAbsoluteInitialFramePresentationSector, this);
-            _cs2cp = new CrusaderSectorToCrusaderPacket(_cp2a);
+                    dblVolume, DiscItemCrusader.this.getStartSector(), this);
+            _cs2cp = new CrusaderSectorToCrusaderPacket(DiscItemCrusader.this.makeSectorRange(), _cp2a);
         }
+        @Override
         public void setFrameListener(@CheckForNull IDemuxedFrame.Listener listener) {
             _listener = listener;
         }
 
+        @Override
         public void attachToSectorClaimer(@Nonnull SectorClaimSystem scs) {
-            SectorClaimToSectorCrusader s2cs = scs.getClaimer(SectorClaimToSectorCrusader.class);
-            s2cs.setListener(this);
-            s2cs.setRangeLimit(getStartSector(), getEndSector());
+            scs.addIdListener(_cs2cp);
         }
 
-        public void sectorRead(@Nonnull SectorCrusader sector, @Nonnull ILocalizedLogger log) 
-                throws LoggedFailure
-        {
-            _cs2cp.sectorRead(sector, log);
-        }
-        public void endOfSectors(@Nonnull ILocalizedLogger log) throws LoggedFailure {
-            _cs2cp.endVideo(log);
-        }
-
-
+        @Override
         public void frameComplete(@Nonnull DemuxedCrusaderFrame frame, @Nonnull ILocalizedLogger log) throws LoggedFailure {
             frame.setFrame(_frameNumberFormatter.next(frame.getStartSector(), frame.getHeaderFrameNumber(), log));
             if (_listener != null)
                 _listener.frameComplete(frame);
         }
 
-        public void videoEnd(@Nonnull ILocalizedLogger log, int iStartSector,
-                             int iEndSector)
-        {
+        @Override
+        public void videoEnd(@Nonnull ILocalizedLogger log) {
             // might happen at the end of saving a movie, don't care
         }
 
+        @Override
         public void setAudioListener(@Nonnull DecodedAudioPacket.Listener listener) {
             _cp2a.setAudioListener(listener);
         }
 
-        public @Nonnull AudioFormat getOutputFormat() {
-            return CrusaderPacketToFrameAndAudio.CRUSADER_AUDIO_FORMAT;
+        @Override
+        public boolean hasAudio() {
+            return true;
         }
 
+        @Override
+        public @Nonnull AudioFormat getOutputFormat() {
+            return CrusaderPacket.CRUSADER_AUDIO_FORMAT;
+        }
+
+        @Override
         public double getVolume() {
             return _dblVolume;
         }
 
+        @Override
         public int getAbsolutePresentationStartSector() {
-            return DiscItemCrusader.this.getAbsolutePresentationStartSector();
+            return getStartSector();
         }
 
+        @Override
         public int getStartSector() {
             return DiscItemCrusader.this.getStartSector();
         }
 
+        @Override
         public int getEndSector() {
             return DiscItemCrusader.this.getEndSector();
         }
 
+        @Override
         public int getSampleFramesPerSecond() {
-            return CrusaderPacketToFrameAndAudio.CRUSADER_SAMPLE_FRAMES_PER_SECOND;
-        }
-
-        public int getDiscSpeed() {
-            return 2;
+            return CrusaderPacket.CRUSADER_SAMPLE_FRAMES_PER_SECOND;
         }
 
     }

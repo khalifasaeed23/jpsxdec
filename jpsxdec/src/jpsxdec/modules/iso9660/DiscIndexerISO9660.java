@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -51,16 +51,19 @@ import jpsxdec.discitems.DiscItem;
 import jpsxdec.discitems.SerializedDiscItem;
 import jpsxdec.i18n.I;
 import jpsxdec.i18n.exception.LocalizedDeserializationFail;
+import jpsxdec.i18n.exception.LoggedFailure;
 import jpsxdec.i18n.log.ILocalizedLogger;
 import jpsxdec.indexing.DiscIndex;
 import jpsxdec.indexing.DiscIndexer;
 import jpsxdec.iso9660.DirectoryRecord;
+import jpsxdec.modules.IIdentifiedSector;
 import jpsxdec.modules.IdentifiedSector;
+import jpsxdec.modules.IdentifiedSectorListener;
 import jpsxdec.modules.SectorClaimSystem;
 import jpsxdec.util.Misc;
 
 /** Constructs the ISO9660 file system of a disc. */
-public class DiscIndexerISO9660 extends DiscIndexer implements SectorClaimToSectorISO9660.Listener {
+public class DiscIndexerISO9660 extends DiscIndexer implements IdentifiedSectorListener<IIdentifiedSector> {
 
     private static final Logger LOG = Logger.getLogger(DiscIndexerISO9660.class.getName());
 
@@ -100,11 +103,30 @@ public class DiscIndexerISO9660 extends DiscIndexer implements SectorClaimToSect
 
     @Override
     public void attachToSectorClaimer(@Nonnull SectorClaimSystem scs) {
-        SectorClaimToSectorISO9660 s2siso = scs.getClaimer(SectorClaimToSectorISO9660.class);
-        s2siso.setListener(this);
+        scs.addIdListener(this);
     }
 
-    public void isoSectorRead(CdSector cdSector, IdentifiedSector idSector) {
+    @Override
+    public @Nonnull Class<IIdentifiedSector> getListeningFor() {
+        return IIdentifiedSector.class;
+    }
+
+    @Override
+    public void feedSector(@Nonnull IIdentifiedSector idSector, @Nonnull ILocalizedLogger log) throws LoggedFailure {
+        IdentifiedSector isoSector;
+        if (idSector instanceof SectorISO9660VolumePrimaryDescriptor ||
+            idSector instanceof SectorISO9660DirectoryRecords)
+        {
+            isoSector = (IdentifiedSector) idSector;
+        } else {
+            isoSector = null;
+        }
+        isoSectorRead(idSector.getCdSector(), isoSector);
+
+    }
+
+
+    public void isoSectorRead(@Nonnull CdSector cdSector, @Nonnull IdentifiedSector idSector) {
         int iSectorType;
         switch (cdSector.getType()) {
             case CD_AUDIO:
@@ -160,7 +182,8 @@ public class DiscIndexerISO9660 extends DiscIndexer implements SectorClaimToSect
      * image is not handled. */
     private int _iSectorNumberDiff = 0;
 
-    public void endOfSectors(@Nonnull ILocalizedLogger log) {
+    @Override
+    public void endOfFeedSectors(@Nonnull ILocalizedLogger log) throws LoggedFailure {
 
         if (_primaryDescriptors.isEmpty()) {
             LOG.warning("Disc has no primary descriptor");
@@ -207,7 +230,7 @@ public class DiscIndexerISO9660 extends DiscIndexer implements SectorClaimToSect
     // Recursively build the file system
 
     private void processDirectoryRecord(DirectoryRecord dirRec, @CheckForNull File parentPath) {
-        // ignore '.' and '..' directory entires, otherwise infinite loop
+        // ignore '.' and '..' directory entries, otherwise infinite loop
         if (dirRec.name.equals(DirectoryRecord.CURRENT_DIRECTORY) ||
             dirRec.name.equals(DirectoryRecord.PARENT_DIRECTORY))
             return;
@@ -235,7 +258,7 @@ public class DiscIndexerISO9660 extends DiscIndexer implements SectorClaimToSect
             // we may not have got a directory record at that sector :(
             if (dirRecSect != null) {
 
-                // walk though the entires in this sector's directory record
+                // walk through the entries in this sector's directory record
                 for (DirectoryRecord childDirRec : dirRecSect.getRecords()) {
                     processDirectoryRecord(childDirRec, dirRecPath);
                 }
@@ -270,7 +293,7 @@ public class DiscIndexerISO9660 extends DiscIndexer implements SectorClaimToSect
             _errLog.log(Level.SEVERE, I.ISO_FILE_CORRUPTED_IGNORING( fileDirRec.name));
             return;
         }
-        
+
         int iStartSector = (int)lngStartSector;
         int iEndSector;
         if (lngFileSize == 0) {
@@ -286,11 +309,12 @@ public class DiscIndexerISO9660 extends DiscIndexer implements SectorClaimToSect
     }
 
     private void addFileDiscItem(int iStartSector, int iEndSector, @Nonnull File filePath, long lngFileSize) {
+        // TODO add warning if any files overlap (Felony 11-79)
 
         if (iEndSector > getCd().getSectorCount()) {
             // the file sectors protrude off the end of the disc
             // could happen if the image has been trimmed
-            // but some games just have it intentially
+            // but some games just have it intentionally
             _errLog.log(Level.WARNING,
                         I.NOT_CONTAINED_IN_DISC(Misc.forwardSlashPath(filePath)));
         }
@@ -322,9 +346,13 @@ public class DiscIndexerISO9660 extends DiscIndexer implements SectorClaimToSect
     }
 
     // -------------------------------------------------------------------------
-    
+
     @Override
     public void listPostProcessing(Collection<DiscItem> allItems) {
+    }
+    @Override
+    public boolean filterChild(DiscItem parent, DiscItem child) {
+        return false;
     }
 
 }

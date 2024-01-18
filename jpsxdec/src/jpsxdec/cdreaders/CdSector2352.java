@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -54,7 +54,7 @@ public class CdSector2352 extends CdSector {
     private final CdSectorHeader _header;
     @CheckForNull
     private final CdSectorXaSubHeader _subHeader;
-    
+
     // Following the header are either [2324 bytes]
     // or [2048 bytes] of user data (depending on the mode/form).
     // Following that are [4 bytes] Error Detection Code (EDC)
@@ -67,9 +67,9 @@ public class CdSector2352 extends CdSector {
     private final Type _type;
 
     public CdSector2352(int iSectorIndex, @Nonnull byte[] abSectorBytes,
-                        int iByteStartOffset, long lngFilePointer)
+                        int iByteStartOffset, int iFilePointer)
     {
-        super(iSectorIndex, abSectorBytes, iByteStartOffset, lngFilePointer);
+        super(iSectorIndex, abSectorBytes, iByteStartOffset, iFilePointer);
         if (iByteStartOffset + SECTOR_SIZE_2352_BIN > abSectorBytes.length)
             throw new IllegalArgumentException();
         CdSectorHeader header = new CdSectorHeader(iSectorIndex, abSectorBytes, iByteStartOffset);
@@ -106,33 +106,41 @@ public class CdSector2352 extends CdSector {
         }
     }
 
+    @Override
     public int getRawCdSectorSize() {
         return SECTOR_SIZE_2352_BIN;
     }
 
+    @Override
     public int getCdUserDataSize() {
         return _iUserDataSize;
     }
 
+    @Override
     protected int getHeaderDataSize() {
         return _iHeaderSize;
     }
 
+    @Override
     public Type getType() {
         return _type;
     }
+    @Override
     public boolean isCdAudioSector() {
         return _type == Type.CD_AUDIO;
     }
 
+    @Override
     public @CheckForNull CdSectorHeader getHeader() {
         return _header;
     }
 
+    @Override
     public @CheckForNull CdSectorXaSubHeader getSubHeader() {
         return _subHeader;
     }
 
+    @Override
     public boolean hasHeaderErrors() {
         return (_header != null && _header.hasErrors()) ||
                (_subHeader != null && _subHeader.hasErrors());
@@ -147,7 +155,7 @@ public class CdSector2352 extends CdSector {
             iCount += _subHeader.getErrorCount();
         return iCount;
     }
-    
+
     @Override
     public @Nonnull byte[] rebuildRawSector(@Nonnull byte[] abNewUserData) {
         if (_type == Type.MODE1)
@@ -163,10 +171,10 @@ public class CdSector2352 extends CdSector {
         byte[] abRawData = getRawSectorDataCopy();
         System.arraycopy(abNewUserData, 0, abRawData, _iHeaderSize, _iUserDataSize);
         SectorErrorCorrection.rebuildErrorCorrection(abRawData, _subHeader.getSubMode().getForm());
-        
+
         return abRawData;
     }
-    
+
     @Override
     public String toString() {
         switch (_type) {

@@ -1,6 +1,6 @@
 /*
  * jPSXdec: PlayStation 1 Media Decoder/Converter in Java
- * Copyright (C) 2007-2019  Michael Sabin
+ * Copyright (C) 2007-2023  Michael Sabin
  * All rights reserved.
  *
  * Redistribution and use of the jPSXdec code or any derivative works are
@@ -41,7 +41,7 @@ import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 
 /** Exception returned by constructors when a supplied stream or data
- *  does not provide the correct information to generate a class. 
+ *  does not provide the correct information to generate a class.
  *  SHOULD NOT BE EXPOSED TO THE END USER.
  *  End users are not expected to know about or fix binary data issues. */
 public class BinaryDataNotRecognized extends Exception {
